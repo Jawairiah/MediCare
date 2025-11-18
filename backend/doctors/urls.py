@@ -6,6 +6,7 @@ from .views import (
     DoctorClinicAddView,
     DoctorAvailabilityCreateView,
     DoctorMyAppointmentsView,
+    DoctorPastAppointmentsView,
 )
 
 urlpatterns = [
@@ -13,4 +14,5 @@ urlpatterns = [
     path('add-clinic/', DoctorClinicAddView.as_view(), name='doctor-add-clinic'),
     path('add-availability/', DoctorAvailabilityCreateView.as_view(), name='doctor-add-availability'),
     path('my-appointments/', DoctorMyAppointmentsView.as_view(), name='doctor-my-appointments'),
+    path('past-appointments/', DoctorPastAppointmentsView.as_view(), name='doctor-past-appointments'),
 ]

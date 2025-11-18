@@ -7,7 +7,8 @@ from datetime import datetime, date, time as dt_time
 from doctors.serializers import (
     DoctorClinicSerializer, 
     DoctorAvailabilitySerializer,
-    DoctorAppointmentSerializer
+    DoctorAppointmentSerializer,
+    DoctorPastAppointmentSerializer
 )
 
 
@@ -286,48 +287,48 @@ class DoctorMyAppointmentsView(APIView):
         return Response(serializer.data)
 
 
-# class DoctorPastAppointmentsView(APIView):
-#     """View all past/completed appointments for the doctor"""
-#     permission_classes = [permissions.IsAuthenticated]
+class DoctorPastAppointmentsView(APIView):
+    """View all past/completed appointments for the doctor"""
+    permission_classes = [permissions.IsAuthenticated]
 
-#     def get(self, request):
-#         user = request.user
+    def get(self, request):
+        user = request.user
         
-#         with connection.cursor() as cursor:
-#             # Get doctor profile
-#             cursor.execute("""
-#                 SELECT id FROM doctors_doctorprofile 
-#                 WHERE user_id = %s
-#             """, [user.id])
+        with connection.cursor() as cursor:
+            # Get doctor profile
+            cursor.execute("""
+                SELECT id FROM doctors_doctorprofile 
+                WHERE user_id = %s
+            """, [user.id])
             
-#             doctor_row = cursor.fetchone()
-#             if not doctor_row:
-#                 return Response({"detail": "User is not a doctor."}, status=400)
+            doctor_row = cursor.fetchone()
+            if not doctor_row:
+                return Response({"detail": "User is not a doctor."}, status=400)
             
-#             doctor_id = doctor_row[0]
+            doctor_id = doctor_row[0]
             
-#             # Get all past appointments
-#             cursor.execute("""
-#                 SELECT 
-#                     pa.id,
-#                     pa.patient_id,
-#                     CONCAT(u.first_name, ' ', u.last_name) as patient_name,
-#                     pa.clinic_id,
-#                     c.name as clinic_name,
-#                     pa.scheduled_time,
-#                     pa.status,
-#                     pa.notes,
-#                     pa.created_at,
-#                     pa.completed_at
-#                 FROM appointments_pastappointment pa
-#                 INNER JOIN patients_patientprofile p ON pa.patient_id = p.id
-#                 INNER JOIN users_user u ON p.user_id = u.id
-#                 INNER JOIN clinic_clinic c ON pa.clinic_id = c.id
-#                 WHERE pa.doctor_id = %s
-#                 ORDER BY pa.scheduled_time DESC
-#             """, [doctor_id])
+            # Get all past appointments
+            cursor.execute("""
+                SELECT 
+                    pa.id,
+                    pa.patient_id,
+                    CONCAT(u.first_name, ' ', u.last_name) as patient_name,
+                    pa.clinic_id,
+                    c.name as clinic_name,
+                    pa.scheduled_time,
+                    pa.status,
+                    pa.notes,
+                    pa.created_at,
+                    pa.completed_at
+                FROM appointments_pastappointment pa
+                INNER JOIN patients_patientprofile p ON pa.patient_id = p.id
+                INNER JOIN users_user u ON p.user_id = u.id
+                INNER JOIN clinic_clinic c ON pa.clinic_id = c.id
+                WHERE pa.doctor_id = %s
+                ORDER BY pa.scheduled_time DESC
+            """, [doctor_id])
             
-#             past_appointments = dictfetchall(cursor)
+            past_appointments = dictfetchall(cursor)
         
-#         serializer = DoctorPastAppointmentSerializer(past_appointments, many=True)
-#         return Response(serializer.data)
+        serializer = DoctorPastAppointmentSerializer(past_appointments, many=True)
+        return Response(serializer.data)

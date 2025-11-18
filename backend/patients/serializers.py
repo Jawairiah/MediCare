@@ -54,14 +54,14 @@ class AppointmentSerializer(serializers.Serializer):
     created_at = serializers.DateTimeField()
 
 
-# class PastAppointmentSerializer(serializers.Serializer):
-#     id = serializers.IntegerField()
-#     doctor_id = serializers.IntegerField()
-#     doctor_name = serializers.CharField()
-#     clinic_id = serializers.IntegerField()
-#     clinic_name = serializers.CharField()
-#     scheduled_time = serializers.DateTimeField()
-#     status = serializers.CharField()
-#     notes = serializers.CharField(allow_blank=True)
-#     created_at = serializers.DateTimeField()
-#     completed_at = serializers.DateTimeField()
+class PastAppointmentSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    doctor_id = serializers.IntegerField()
+    doctor_name = serializers.CharField()
+    clinic_id = serializers.IntegerField()
+    clinic_name = serializers.CharField()
+    scheduled_time = serializers.DateTimeField()
+    status = serializers.CharField()
+    notes = serializers.CharField(allow_blank=True)
+    created_at = serializers.DateTimeField()
+    completed_at = serializers.DateTimeField()

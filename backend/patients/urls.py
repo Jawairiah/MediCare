@@ -6,6 +6,7 @@ from .views import (
     PatientBookAppointmentView,
     PatientMyAppointmentsView,
     PatientCancelAppointmentView,
+    PatientPastAppointmentsView,
 )
 
 urlpatterns = [
@@ -15,4 +16,5 @@ urlpatterns = [
     path('book-appointment/', PatientBookAppointmentView.as_view(), name='patient-book-appointment'),
     path('my-appointments/', PatientMyAppointmentsView.as_view(), name='patient-my-appointments'),
     path('cancel-appointment/<int:appointment_id>/', PatientCancelAppointmentView.as_view(), name='patient-cancel-appointment'),
+    path('past-appointments/', PatientPastAppointmentsView.as_view(), name='patient-past-appointments'),
 ]
