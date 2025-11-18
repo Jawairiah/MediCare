@@ -1,62 +1,302 @@
 # doctors/views.py
-from clinic.models import Clinic
+from django.db import connection
 from rest_framework.response import Response
-from rest_framework import status,serializers
-from rest_framework import generics, permissions
-from doctors.models import DoctorClinic,DoctorProfile
-from doctors.serializers import DoctorClinicSerializer
-from doctors.serializers import DoctorAvailabilitySerializer
+from rest_framework import status, permissions
+from rest_framework.views import APIView
+from doctors.serializers import (
+    DoctorClinicSerializer, 
+    DoctorAvailabilitySerializer,
+    DoctorAppointmentSerializer
+)
 
 
-class DoctorClinicListView(generics.ListAPIView):
-    serializer_class = DoctorClinicSerializer
+def dictfetchall(cursor):
+    """Return all rows from a cursor as a dict"""
+    columns = [col[0] for col in cursor.description]
+    return [dict(zip(columns, row)) for row in cursor.fetchall()]
+
+
+def dictfetchone(cursor):
+    """Return one row from a cursor as a dict"""
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    columns = [col[0] for col in cursor.description]
+    return dict(zip(columns, row))
+
+
+class DoctorClinicListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
-    def get_queryset(self):
-        user = self.request.user
-        try:
-            doctor = user.doctorprofile
-        except DoctorProfile.DoesNotExist:
-            # Return empty queryset if user is not a doctor
-            return DoctorClinic.objects.none()
+    def get(self, request):
+        user = request.user
+        
+        with connection.cursor() as cursor:
+            # Check if user is a doctor
+            cursor.execute("""
+                SELECT id FROM doctors_doctorprofile 
+                WHERE user_id = %s
+            """, [user.id])
+            
+            doctor_row = cursor.fetchone()
+            if not doctor_row:
+                return Response({"detail": "User is not a doctor."}, status=400)
+            
+            doctor_id = doctor_row[0]
+            
+            # Get all clinics for this doctor
+            cursor.execute("""
+                SELECT 
+                    dc.id,
+                    dc.clinic_id,
+                    c.name as clinic_name,
+                    c.address as clinic_address,
+                    c.phone as clinic_phone,
+                    dc.consultation_fee,
+                    dc.created_at
+                FROM doctors_doctorclinic dc
+                INNER JOIN clinic_clinic c ON dc.clinic_id = c.id
+                WHERE dc.doctor_id = %s
+                ORDER BY dc.created_at DESC
+            """, [doctor_id])
+            
+            clinics = dictfetchall(cursor)
+        
+        serializer = DoctorClinicSerializer(clinics, many=True)
+        return Response(serializer.data)
 
-        return DoctorClinic.objects.filter(doctor=doctor)
 
-
-
-class DoctorClinicAddView(generics.CreateAPIView):
-    serializer_class = DoctorClinicSerializer
+class DoctorClinicAddView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
-    def create(self, request, *args, **kwargs):
+    def post(self, request):
         clinic_id = request.data.get("clinic_id")
         fee = request.data.get("consultation_fee")
 
-        try:
-            clinic = Clinic.objects.get(id=clinic_id)
-        except Clinic.DoesNotExist:
-            return Response({"error": "Invalid clinic ID"}, status=status.HTTP_400_BAD_REQUEST)
+        if not clinic_id:
+            return Response({"error": "clinic_id is required"}, status=400)
 
-        doctor = request.user.doctorprofile
-        obj, created = DoctorClinic.objects.get_or_create(
-            doctor=doctor,
-            clinic=clinic,
-            defaults={"consultation_fee": fee},
-        )
-        if not created:
-            return Response({"message": "Doctor already associated with this clinic."}, status=status.HTTP_200_OK)
+        user = request.user
+        
+        with connection.cursor() as cursor:
+            # Get doctor profile
+            cursor.execute("""
+                SELECT id FROM doctors_doctorprofile 
+                WHERE user_id = %s
+            """, [user.id])
+            
+            doctor_row = cursor.fetchone()
+            if not doctor_row:
+                return Response({"error": "User is not a doctor."}, status=400)
+            
+            doctor_id = doctor_row[0]
+            
+            # Check if clinic exists
+            cursor.execute("SELECT id FROM clinic_clinic WHERE id = %s", [clinic_id])
+            if not cursor.fetchone():
+                return Response({"error": "Invalid clinic ID"}, status=400)
+            
+            # Check if relationship already exists
+            cursor.execute("""
+                SELECT id FROM doctors_doctorclinic 
+                WHERE doctor_id = %s AND clinic_id = %s
+            """, [doctor_id, clinic_id])
+            
+            existing = cursor.fetchone()
+            if existing:
+                return Response({"message": "Doctor already associated with this clinic."}, status=200)
+            
+            # Insert new doctor-clinic relationship
+            cursor.execute("""
+                INSERT INTO doctors_doctorclinic (doctor_id, clinic_id, consultation_fee, created_at)
+                VALUES (%s, %s, %s, NOW())
+                RETURNING id
+            """, [doctor_id, clinic_id, fee])
+            
+            new_id = cursor.fetchone()[0]
+        
+        return Response({"message": "Clinic added successfully.", "id": new_id}, status=201)
 
-        return Response({"message": "Clinic added successfully."}, status=status.HTTP_201_CREATED)
 
-
-
-
-class DoctorAvailabilityCreateView(generics.CreateAPIView):
-    serializer_class = DoctorAvailabilitySerializer
+class DoctorAvailabilityCreateView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
-    def perform_create(self, serializer):
-        doctor_clinic = serializer.validated_data['doctor_clinic']
-        if doctor_clinic.doctor != self.request.user.doctorprofile:
-            raise serializers.ValidationError("You can only set availability for your own clinics.")
-        serializer.save()
+    def post(self, request):
+        doctor_clinic_id = request.data.get("doctor_clinic_id")
+        date = request.data.get("date")
+        start_time = request.data.get("start_time")
+        end_time = request.data.get("end_time")
+        slot_duration = request.data.get("slot_duration", 30)
+
+        if not all([doctor_clinic_id, date, start_time, end_time]):
+            return Response({"error": "Missing required fields"}, status=400)
+
+        user = request.user
+        
+        with connection.cursor() as cursor:
+            # Get doctor profile
+            cursor.execute("""
+                SELECT id FROM doctors_doctorprofile 
+                WHERE user_id = %s
+            """, [user.id])
+            
+            doctor_row = cursor.fetchone()
+            if not doctor_row:
+                return Response({"error": "User is not a doctor."}, status=400)
+            
+            doctor_id = doctor_row[0]
+            
+            # Verify doctor_clinic belongs to this doctor
+            cursor.execute("""
+                SELECT id FROM doctors_doctorclinic 
+                WHERE id = %s AND doctor_id = %s
+            """, [doctor_clinic_id, doctor_id])
+            
+            if not cursor.fetchone():
+                return Response({"error": "You can only set availability for your own clinics."}, status=403)
+            
+            # Check if there are any appointments for this date/time
+            cursor.execute("""
+                SELECT COUNT(*) FROM appointments_appointment
+                WHERE doctor_id = %s 
+                  AND DATE(scheduled_time) = %s
+                  AND TIME(scheduled_time) >= %s
+                  AND TIME(scheduled_time) < %s
+                  AND status != 'cancelled'
+            """, [doctor_id, date, start_time, end_time])
+            
+            appt_count = cursor.fetchone()[0]
+            if appt_count > 0:
+                return Response({
+                    "error": "Cannot update availability. Appointments exist in this time slot."
+                }, status=400)
+            
+            # Check if availability already exists for this slot
+            cursor.execute("""
+                SELECT id FROM doctors_doctoravailability
+                WHERE doctor_clinic_id = %s 
+                  AND date = %s 
+                  AND start_time = %s
+            """, [doctor_clinic_id, date, start_time])
+            
+            existing = cursor.fetchone()
+            
+            if existing:
+                # Update existing
+                cursor.execute("""
+                    UPDATE doctors_doctoravailability
+                    SET end_time = %s, slot_duration = %s, is_available = TRUE
+                    WHERE id = %s
+                    RETURNING id
+                """, [end_time, slot_duration, existing[0]])
+                
+                availability_id = cursor.fetchone()[0]
+                message = "Availability updated successfully."
+            else:
+                # Insert new
+                cursor.execute("""
+                    INSERT INTO doctors_doctoravailability 
+                    (doctor_clinic_id, date, start_time, end_time, slot_duration, is_available, created_at)
+                    VALUES (%s, %s, %s, %s, %s, TRUE, NOW())
+                    RETURNING id
+                """, [doctor_clinic_id, date, start_time, end_time, slot_duration])
+                
+                availability_id = cursor.fetchone()[0]
+                message = "Availability created successfully."
+        
+        return Response({"message": message, "id": availability_id}, status=201)
+
+
+class DoctorMyAppointmentsView(APIView):
+    """View all upcoming appointments for the doctor"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        
+        with connection.cursor() as cursor:
+            # Get doctor profile
+            cursor.execute("""
+                SELECT id FROM doctors_doctorprofile 
+                WHERE user_id = %s
+            """, [user.id])
+            
+            doctor_row = cursor.fetchone()
+            if not doctor_row:
+                return Response({"detail": "User is not a doctor."}, status=400)
+            
+            doctor_id = doctor_row[0]
+            
+            # Get all upcoming appointments
+            cursor.execute("""
+                SELECT 
+                    a.id,
+                    a.patient_id,
+                    CONCAT(u.first_name, ' ', u.last_name) as patient_name,
+                    a.clinic_id,
+                    c.name as clinic_name,
+                    a.scheduled_time,
+                    a.status,
+                    a.notes,
+                    a.created_at
+                FROM appointments_appointment a
+                INNER JOIN patients_patientprofile p ON a.patient_id = p.id
+                INNER JOIN users_user u ON p.user_id = u.id
+                INNER JOIN clinic_clinic c ON a.clinic_id = c.id
+                WHERE a.doctor_id = %s
+                  AND a.scheduled_time >= NOW()
+                  AND a.status != 'cancelled'
+                ORDER BY a.scheduled_time ASC
+            """, [doctor_id])
+            
+            appointments = dictfetchall(cursor)
+        
+        serializer = DoctorAppointmentSerializer(appointments, many=True)
+        return Response(serializer.data)
+
+
+class DoctorPastAppointmentsView(APIView):
+    """View all past/completed appointments for the doctor"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        
+        with connection.cursor() as cursor:
+            # Get doctor profile
+            cursor.execute("""
+                SELECT id FROM doctors_doctorprofile 
+                WHERE user_id = %s
+            """, [user.id])
+            
+            doctor_row = cursor.fetchone()
+            if not doctor_row:
+                return Response({"detail": "User is not a doctor."}, status=400)
+            
+            doctor_id = doctor_row[0]
+            
+            # Get all past appointments
+            cursor.execute("""
+                SELECT 
+                    pa.id,
+                    pa.patient_id,
+                    CONCAT(u.first_name, ' ', u.last_name) as patient_name,
+                    pa.clinic_id,
+                    c.name as clinic_name,
+                    pa.scheduled_time,
+                    pa.status,
+                    pa.notes,
+                    pa.created_at,
+                    pa.completed_at
+                FROM appointments_pastappointment pa
+                INNER JOIN patients_patientprofile p ON pa.patient_id = p.id
+                INNER JOIN users_user u ON p.user_id = u.id
+                INNER JOIN clinic_clinic c ON pa.clinic_id = c.id
+                WHERE pa.doctor_id = %s
+                ORDER BY pa.scheduled_time DESC
+            """, [doctor_id])
+            
+            past_appointments = dictfetchall(cursor)
+        
+        serializer = DoctorPastAppointmentSerializer(past_appointments, many=True)
+        return Response(serializer.data)

@@ -1,54 +1,64 @@
+# patients/serializers.py
 from rest_framework import serializers
-from doctors.models import DoctorProfile
-from clinic.models import Clinic
-from doctors.models import DoctorClinic
-from rest_framework import serializers
-from doctors.models import DoctorAvailability
 
 class DoctorAvailableSlotsSerializer(serializers.Serializer):
     date = serializers.DateField()
     slots = serializers.ListField(child=serializers.CharField())
 
 
-class DoctorClinicInfoSerializer(serializers.ModelSerializer):
-    clinic_name = serializers.CharField(source="clinic.name", read_only=True)
-
-    class Meta:
-        model = DoctorClinic
-        fields = ["clinic", "clinic_name", "consultation_fee"]
-        
-
-class DoctorListSerializer(serializers.ModelSerializer):
-    clinics = DoctorClinicInfoSerializer(many=True, source="doctorclinic_set")
-
-    class Meta:
-        model = DoctorProfile
-        fields = [
-            "id",
-            "user",
-            "specialization",
-            "qualification",
-            "experience_years",
-            "clinics"
-        ]
+class DoctorClinicInfoSerializer(serializers.Serializer):
+    clinic_id = serializers.IntegerField()
+    clinic_name = serializers.CharField()
+    consultation_fee = serializers.DecimalField(max_digits=10, decimal_places=2, allow_null=True)
 
 
-class DoctorDetailSerializer(serializers.ModelSerializer):
-    clinics = DoctorClinicInfoSerializer(many=True, source="doctorclinic_set")
+class DoctorListSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    user_id = serializers.IntegerField()
+    first_name = serializers.CharField()
+    last_name = serializers.CharField()
+    specialization = serializers.CharField()
+    qualification = serializers.CharField()
+    experience_years = serializers.IntegerField(allow_null=True)
+    clinics = DoctorClinicInfoSerializer(many=True)
 
-    class Meta:
-        model = DoctorProfile
-        fields = [
-            "id",
-            "user",
-            "specialization",
-            "qualification",
-            "experience_years",
-            "clinics"
-        ]
+
+class DoctorDetailSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    user_id = serializers.IntegerField()
+    first_name = serializers.CharField()
+    last_name = serializers.CharField()
+    specialization = serializers.CharField()
+    qualification = serializers.CharField()
+    experience_years = serializers.IntegerField(allow_null=True)
+    clinics = DoctorClinicInfoSerializer(many=True)
 
 
 class AvailableSlotsSerializer(serializers.Serializer):
     date = serializers.DateField()
     slots = serializers.ListField(child=serializers.CharField())
 
+
+class AppointmentSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    doctor_id = serializers.IntegerField()
+    doctor_name = serializers.CharField()
+    clinic_id = serializers.IntegerField()
+    clinic_name = serializers.CharField()
+    scheduled_time = serializers.DateTimeField()
+    status = serializers.CharField()
+    notes = serializers.CharField(allow_blank=True)
+    created_at = serializers.DateTimeField()
+
+
+# class PastAppointmentSerializer(serializers.Serializer):
+#     id = serializers.IntegerField()
+#     doctor_id = serializers.IntegerField()
+#     doctor_name = serializers.CharField()
+#     clinic_id = serializers.IntegerField()
+#     clinic_name = serializers.CharField()
+#     scheduled_time = serializers.DateTimeField()
+#     status = serializers.CharField()
+#     notes = serializers.CharField(allow_blank=True)
+#     created_at = serializers.DateTimeField()
+#     completed_at = serializers.DateTimeField()
