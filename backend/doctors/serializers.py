@@ -1,55 +1,33 @@
 # doctors/serializers.py
-from .models import DoctorClinic,DoctorAvailability
 from rest_framework import serializers
-from clinic.models import Clinic
 
-class DoctorAvailabilitySerializer(serializers.ModelSerializer):
-    class Meta:
-        model = DoctorAvailability
-        fields = ['id', 'doctor_clinic', 'date', 'start_time', 'end_time', 'slot_duration']
-
-
-
-class ClinicSimpleSerializer(serializers.ModelSerializer):
-    """Lightweight serializer to show clinic details within doctor views"""
-    class Meta:
-        model = Clinic
-        fields = ['id', 'name', 'address', 'phone']
+class DoctorAvailabilitySerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    doctor_clinic_id = serializers.IntegerField()
+    date = serializers.DateField()
+    start_time = serializers.TimeField()
+    end_time = serializers.TimeField()
+    slot_duration = serializers.IntegerField()
 
 
-class DoctorClinicSerializer(serializers.ModelSerializer):
-    """Serializer for doctor-clinic relationships"""
-    clinic = ClinicSimpleSerializer(read_only=True)
-    clinic_id = serializers.PrimaryKeyRelatedField(
-        queryset=Clinic.objects.all(), write_only=True,required=False, source='clinic'
-    )
+class ClinicSimpleSerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    address = serializers.CharField()
+    phone = serializers.CharField()
+    email = serializers.EmailField(required=False)
 
-    class Meta:
-        model = DoctorClinic
-        fields = [
-            'id',
-            'clinic',         # nested read-only details
-            'clinic_id',      # used when creating or updating
-            'consultation_fee',
-            'created_at'
-        ]
-        read_only_fields = ['id', 'created_at']
 
-    def create(self, validated_data):
-        """Ensure no duplicate doctor-clinic pair is created"""
-        doctor = self.context['request'].user.doctorprofile
-        clinic = validated_data['clinic']
-        consultation_fee = validated_data.get('consultation_fee')
+class DoctorClinicSerializer(serializers.Serializer):
+    id = serializers.IntegerField(read_only=True)
+    clinic_id = serializers.IntegerField()
+    clinic_name = serializers.CharField(read_only=True)
+    clinic_address = serializers.CharField(read_only=True)
+    clinic_phone = serializers.CharField(read_only=True)
+    clinic_email = serializers.EmailField(read_only=True, required=False)
+    consultation_fee = serializers.DecimalField(max_digits=10, decimal_places=2, allow_null=True, required=False)
+    created_at = serializers.DateTimeField(read_only=True)
 
-        obj, created = DoctorClinic.objects.get_or_create(
-            doctor=doctor,
-            clinic=clinic,
-            defaults={'consultation_fee': consultation_fee},
-        )
-        if not created and consultation_fee:
-            obj.consultation_fee = consultation_fee
-            obj.save()
-        return obj
 
 class DoctorAppointmentSerializer(serializers.Serializer):
     id = serializers.IntegerField()
@@ -61,3 +39,16 @@ class DoctorAppointmentSerializer(serializers.Serializer):
     status = serializers.CharField()
     notes = serializers.CharField(allow_blank=True)
     created_at = serializers.DateTimeField()
+
+
+# class DoctorPastAppointmentSerializer(serializers.Serializer):
+#     id = serializers.IntegerField()
+#     patient_id = serializers.IntegerField()
+#     patient_name = serializers.CharField()
+#     clinic_id = serializers.IntegerField()
+#     clinic_name = serializers.CharField()
+#     scheduled_time = serializers.DateTimeField()
+#     status = serializers.CharField()
+#     notes = serializers.CharField(allow_blank=True)
+#     created_at = serializers.DateTimeField()
+#     completed_at = serializers.DateTimeField()

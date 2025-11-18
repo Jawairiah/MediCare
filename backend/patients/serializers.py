@@ -4,6 +4,9 @@ from rest_framework import serializers
 class DoctorAvailableSlotsSerializer(serializers.Serializer):
     date = serializers.DateField()
     slots = serializers.ListField(child=serializers.CharField())
+    total_slots = serializers.IntegerField(required=False)
+    available_slots = serializers.IntegerField(required=False)
+    booked_slots = serializers.IntegerField(required=False)
 
 
 class DoctorClinicInfoSerializer(serializers.Serializer):

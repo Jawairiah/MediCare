@@ -5,7 +5,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.tokens import RefreshToken
 from django.contrib.auth.hashers import make_password, check_password
-from users.serializers import RegisterSerializer, LoginSerializer, UserSerializer
+from users.serializers import RegisterSerializer, LoginSerializer
 
 
 def dictfetchone(cursor):
@@ -37,8 +37,76 @@ class RegisterView(APIView):
             cursor.execute("SELECT id FROM users_user WHERE email = %s", [email])
             if cursor.fetchone():
                 return Response({"error": "Email already registered."}, status=400)
+
+            # Hash password
+            hashed_password = make_password(password)
+
+            # Insert user
+            cursor.execute("""
+                INSERT INTO users_user 
+                (email, password, first_name, last_name, role, 
+                 is_active, is_staff, is_superuser, date_joined)
+                VALUES (%s, %s, %s, %s, %s,
+                    TRUE, FALSE, FALSE, NOW())
+                    RETURNING id
+                    """, [email, hashed_password, first_name, last_name, role])
+
+            user_id = cursor.fetchone()[0]
+
+            if role == "doctor":
+                specialization = serializer.validated_data.get("specialization", "")
+                qualification = serializer.validated_data.get("qualification", "")
+                experience_years = serializer.validated_data.get("experience_years")
+
+                # Create doctor profile WITHOUT clinic_name
+                cursor.execute("""
+                    INSERT INTO doctors_doctorprofile 
+                    (user_id, specialization, qualification, experience_years, created_at)
+                    VALUES (%s, %s, %s, %s, NOW())
+                    RETURNING id
+                """, [user_id, specialization, qualification, experience_years])
+                
+                doctor_id = cursor.fetchone()[0]
+
+                # Create DoctorClinic if clinic selected
+                if clinic_id:
+                    cursor.execute("""
+                        SELECT id FROM clinic_clinic WHERE id = %s
+                    """, [clinic_id])
+                    
+                    if cursor.fetchone():
+                        cursor.execute("""
+                            INSERT INTO doctors_doctorclinic (doctor_id, clinic_id, created_at)
+                            VALUES (%s, %s, NOW())
+                        """, [doctor_id, clinic_id])
+
+            elif role == "patient":
+                phone = serializer.validated_data.get("phone", "")
+                date_of_birth = serializer.validated_data.get("date_of_birth")
+                gender = serializer.validated_data.get("gender", "")
+                address = serializer.validated_data.get("address", "")
+
+                # Create patient profile
+                cursor.execute("""
+                    INSERT INTO patients_patientprofile 
+                    (user_id, date_of_birth, gender, phone, address, created_at)
+                    VALUES (%s, %s, %s, %s, %s, NOW())
+                """, [user_id, date_of_birth, gender, phone, address])
+
+            # Get user data for response
+            cursor.execute("""
+                SELECT id, email, first_name, last_name, role 
+                FROM users_user WHERE id = %s
+            """, [user_id])
             
-            
+            user_data = dictfetchone(cursor)
+
+        return Response({
+            "user": user_data,
+            "detail": "Account created successfully."
+        }, status=status.HTTP_201_CREATED)
+
+
 class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
     serializer_class = LoginSerializer
@@ -46,48 +114,57 @@ class LoginView(APIView):
     def post(self, request):
         serializer = self.serializer_class(data=request.data)
         serializer.is_valid(raise_exception=True)
-
-        email = serializer.validated_data.get("email")
-        password = serializer.validated_data.get("password")
+        
+        role = serializer.validated_data["role"]
+        email = serializer.validated_data["email"]
+        password = serializer.validated_data["password"]
 
         with connection.cursor() as cursor:
+            # Get user by email
             cursor.execute("""
-                SELECT id, email, password, first_name, last_name, role 
+                SELECT id, email, password, first_name, last_name, role, is_active
                 FROM users_user 
                 WHERE email = %s
             """, [email])
+            
+            user_data = dictfetchone(cursor)
 
-            user = dictfetchone(cursor)
+            if not user_data:
+                return Response({"detail": "Invalid credentials."}, status=401)
 
-        # If no user found
-        if not user:
-            return Response({"error": "Invalid email or password."}, status=status.HTTP_401_UNAUTHORIZED)
+            # Check password
+            if not check_password(password, user_data['password']):
+                return Response({"detail": "Invalid credentials."}, status=401)
 
-        # Check password
-        if not check_password(password, user["password"]):
-            return Response({"error": "Invalid email or password."}, status=status.HTTP_401_UNAUTHORIZED)
+            # Check if user is active
+            if not user_data['is_active']:
+                return Response({"detail": "Account is inactive."}, status=403)
 
-        # Create JWT tokens
-        refresh = RefreshToken()
-        refresh["user_id"] = user["id"]
-        refresh["email"] = user["email"]
-        refresh["role"] = user["role"]
+            # Check role match
+            if user_data['role'] != role:
+                return Response({
+                    "detail": "Role mismatch. Please login using the correct role."
+                }, status=403)
 
-        access_token = str(refresh.access_token)
-        refresh_token = str(refresh)
+        # Create a minimal user object for JWT
+        class MinimalUser:
+            def __init__(self, user_id):
+                self.id = user_id
+                self.pk = user_id
 
-        # Prepare user data
-        user_data = {
-            "id": user["id"],
-            "email": user["email"],
-            "first_name": user["first_name"],
-            "last_name": user["last_name"],
-            "role": user["role"],
-        }
+        user_obj = MinimalUser(user_data['id'])
+        
+        # Generate JWT tokens
+        refresh = RefreshToken.for_user(user_obj)
 
         return Response({
-            "user": user_data,
-            "access": access_token,
-            "refresh": refresh_token
+            "user": {
+                "id": user_data['id'],
+                "email": user_data['email'],
+                "first_name": user_data['first_name'],
+                "last_name": user_data['last_name'],
+                "role": user_data['role']
+            },
+            "access": str(refresh.access_token),
+            "refresh": str(refresh)
         })
-            

@@ -3,11 +3,11 @@ from django.db import connection
 from rest_framework.response import Response
 from rest_framework import permissions
 from rest_framework.views import APIView
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from patients.serializers import (
     DoctorListSerializer,
     DoctorDetailSerializer,
-    AppointmentSerializer,
+    AppointmentSerializer
 )
 
 
@@ -128,30 +128,46 @@ class PatientDoctorDetailView(APIView):
 
 
 class PatientDoctorAvailabilityView(APIView):
+    """Get available time slots for a doctor at a clinic on a specific date"""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
         doctor_id = request.query_params.get("doctor_id")
         clinic_id = request.query_params.get("clinic_id")
-        date = request.query_params.get("date")
+        date_str = request.query_params.get("date")
 
-        if not doctor_id or not clinic_id or not date:
+        if not doctor_id or not clinic_id or not date_str:
             return Response({"error": "doctor_id, clinic_id, and date are required."}, status=400)
 
+        # Validate date
+        try:
+            availability_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+        except ValueError:
+            return Response({"error": "Invalid date format. Use YYYY-MM-DD"}, status=400)
+
+        # Cannot check past dates
+        if availability_date < date.today():
+            return Response({
+                "date": date_str,
+                "slots": [],
+                "message": "Cannot book appointments in the past"
+            })
+
         with connection.cursor() as cursor:
-            # Fetch doctor_clinic relationship
+
+            # Validate doctor-clinic relation
             cursor.execute("""
                 SELECT id FROM doctors_doctorclinic
                 WHERE doctor_id = %s AND clinic_id = %s
             """, [doctor_id, clinic_id])
 
-            dc_row = cursor.fetchone()
-            if not dc_row:
+            row = cursor.fetchone()
+            if not row:
                 return Response({"error": "Invalid doctor-clinic relationship."}, status=404)
 
-            doctor_clinic_id = dc_row[0]
+            doctor_clinic_id = row[0]
 
-            # Get availability for this date
+            # Fetch availability
             cursor.execute("""
                 SELECT 
                     date, start_time, end_time, slot_duration
@@ -159,39 +175,55 @@ class PatientDoctorAvailabilityView(APIView):
                 WHERE doctor_clinic_id = %s 
                   AND date = %s 
                   AND is_available = TRUE
-            """, [doctor_clinic_id, date])
+            """, [doctor_clinic_id, availability_date])
 
             availability = dictfetchone(cursor)
             if not availability:
-                return Response({"date": date, "slots": []})
+                return Response({"date": date_str, "slots": [], "message": "No availability set for this date"})
 
-            # Generate time slots
+            # Build time slots
             start_dt = datetime.combine(availability['date'], availability['start_time'])
             end_dt = datetime.combine(availability['date'], availability['end_time'])
             delta = timedelta(minutes=availability['slot_duration'])
 
             all_slots = []
             current = start_dt
+            now = datetime.now()
+
             while current < end_dt:
-                all_slots.append(current.strftime("%H:%M"))
+                if availability_date == date.today():
+                    if current > now:
+                        all_slots.append(current.strftime("%H:%M"))
+                else:
+                    all_slots.append(current.strftime("%H:%M"))
+
                 current += delta
 
-            # Get booked slots
+            # -------------------------
+            # Get booked slots correctly
+            # -------------------------
             cursor.execute("""
-                SELECT TIME(scheduled_time) as start_time
+                SELECT scheduled_time::time
                 FROM appointments_appointment
-                WHERE doctor_id = %s 
-                  AND clinic_id = %s 
+                WHERE doctor_id = %s
+                  AND clinic_id = %s
                   AND DATE(scheduled_time) = %s
-                  AND status != 'cancelled'
-            """, [doctor_id, clinic_id, date])
+                  AND status IN ('booked', 'rescheduled')
+            """, [doctor_id, clinic_id, availability_date])
 
             booked_rows = cursor.fetchall()
-            booked_set = {row[0].strftime("%H:%M") for row in booked_rows}
+            booked_set = {r[0].strftime("%H:%M") for r in booked_rows}
 
+            # Filter free slots
             free_slots = [slot for slot in all_slots if slot not in booked_set]
 
-        return Response({"date": date, "slots": free_slots})
+        return Response({
+            "date": date_str,
+            "slots": free_slots,
+            "total_slots": len(all_slots),
+            "available_slots": len(free_slots),
+            "booked_slots": len(booked_set)
+        })
 
 
 class PatientBookAppointmentView(APIView):
@@ -210,6 +242,12 @@ class PatientBookAppointmentView(APIView):
             scheduled_time = datetime.strptime(scheduled_time_str, "%Y-%m-%dT%H:%M")
         except ValueError:
             return Response({"error": "scheduled_time must be in YYYY-MM-DDTHH:MM format."}, status=400)
+
+        # VALIDATION: Cannot book appointments in the past
+        if scheduled_time < datetime.now():
+            return Response({
+                "error": "Cannot book appointments in the past"
+            }, status=400)
 
         user = request.user
 
@@ -269,7 +307,7 @@ class PatientBookAppointmentView(APIView):
                 WHERE doctor_id = %s 
                   AND clinic_id = %s 
                   AND scheduled_time = %s
-                  AND status != 'cancelled'
+                  AND status IN ('booked', 'rescheduled')
             """, [doctor_id, clinic_id, scheduled_time])
 
             if cursor.fetchone():

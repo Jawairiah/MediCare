@@ -5,7 +5,6 @@ from clinic.models import Clinic
 
 class DoctorProfile(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    clinic_name = models.CharField(max_length=255, blank=True)
     specialization = models.CharField(max_length=255, blank=True)
     qualification = models.CharField(max_length=255, blank=True)
     experience_years = models.IntegerField(null=True, blank=True)

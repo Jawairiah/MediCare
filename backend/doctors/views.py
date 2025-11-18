@@ -3,6 +3,7 @@ from django.db import connection
 from rest_framework.response import Response
 from rest_framework import status, permissions
 from rest_framework.views import APIView
+from datetime import datetime, date, time as dt_time
 from doctors.serializers import (
     DoctorClinicSerializer, 
     DoctorAvailabilitySerializer,
@@ -26,6 +27,7 @@ def dictfetchone(cursor):
 
 
 class DoctorClinicListView(APIView):
+    """Get list of clinics where the doctor is registered"""
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
@@ -44,7 +46,7 @@ class DoctorClinicListView(APIView):
             
             doctor_id = doctor_row[0]
             
-            # Get all clinics for this doctor
+            # Get all clinics for this doctor with full clinic details
             cursor.execute("""
                 SELECT 
                     dc.id,
@@ -52,6 +54,7 @@ class DoctorClinicListView(APIView):
                     c.name as clinic_name,
                     c.address as clinic_address,
                     c.phone as clinic_phone,
+                    c.email as clinic_email,
                     dc.consultation_fee,
                     dc.created_at
                 FROM doctors_doctorclinic dc
@@ -123,13 +126,41 @@ class DoctorAvailabilityCreateView(APIView):
 
     def post(self, request):
         doctor_clinic_id = request.data.get("doctor_clinic_id")
-        date = request.data.get("date")
-        start_time = request.data.get("start_time")
-        end_time = request.data.get("end_time")
+        date_str = request.data.get("date")
+        start_time_str = request.data.get("start_time")
+        end_time_str = request.data.get("end_time")
         slot_duration = request.data.get("slot_duration", 30)
 
-        if not all([doctor_clinic_id, date, start_time, end_time]):
+        if not all([doctor_clinic_id, date_str, start_time_str, end_time_str]):
             return Response({"error": "Missing required fields"}, status=400)
+
+        # Parse and validate date/time
+        try:
+            availability_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+            start_time = datetime.strptime(start_time_str, "%H:%M").time()
+            end_time = datetime.strptime(end_time_str, "%H:%M").time()
+        except ValueError:
+            return Response({"error": "Invalid date or time format"}, status=400)
+
+        # VALIDATION: Cannot set availability for past dates
+        if availability_date < date.today():
+            return Response({
+                "error": "Cannot set availability for past dates"
+            }, status=400)
+
+        # VALIDATION: If date is today, check if time has passed
+        if availability_date == date.today():
+            current_time = datetime.now().time()
+            if start_time < current_time:
+                return Response({
+                    "error": "Cannot set availability for past time slots"
+                }, status=400)
+
+        # Validate time range
+        if start_time >= end_time:
+            return Response({
+                "error": "Start time must be before end time"
+            }, status=400)
 
         user = request.user
         
@@ -159,11 +190,11 @@ class DoctorAvailabilityCreateView(APIView):
             cursor.execute("""
                 SELECT COUNT(*) FROM appointments_appointment
                 WHERE doctor_id = %s 
-                  AND DATE(scheduled_time) = %s
-                  AND TIME(scheduled_time) >= %s
-                  AND TIME(scheduled_time) < %s
-                  AND status != 'cancelled'
-            """, [doctor_id, date, start_time, end_time])
+                AND scheduled_time::date = %s
+                AND scheduled_time::time >= %s
+                AND scheduled_time::time < %s
+                AND status != 'cancelled'
+            """, [doctor_id, availability_date, start_time, end_time])
             
             appt_count = cursor.fetchone()[0]
             if appt_count > 0:
@@ -177,7 +208,7 @@ class DoctorAvailabilityCreateView(APIView):
                 WHERE doctor_clinic_id = %s 
                   AND date = %s 
                   AND start_time = %s
-            """, [doctor_clinic_id, date, start_time])
+            """, [doctor_clinic_id, availability_date, start_time])
             
             existing = cursor.fetchone()
             
@@ -199,7 +230,7 @@ class DoctorAvailabilityCreateView(APIView):
                     (doctor_clinic_id, date, start_time, end_time, slot_duration, is_available, created_at)
                     VALUES (%s, %s, %s, %s, %s, TRUE, NOW())
                     RETURNING id
-                """, [doctor_clinic_id, date, start_time, end_time, slot_duration])
+                """, [doctor_clinic_id, availability_date, start_time, end_time, slot_duration])
                 
                 availability_id = cursor.fetchone()[0]
                 message = "Availability created successfully."
@@ -255,48 +286,48 @@ class DoctorMyAppointmentsView(APIView):
         return Response(serializer.data)
 
 
-class DoctorPastAppointmentsView(APIView):
-    """View all past/completed appointments for the doctor"""
-    permission_classes = [permissions.IsAuthenticated]
+# class DoctorPastAppointmentsView(APIView):
+#     """View all past/completed appointments for the doctor"""
+#     permission_classes = [permissions.IsAuthenticated]
 
-    def get(self, request):
-        user = request.user
+#     def get(self, request):
+#         user = request.user
         
-        with connection.cursor() as cursor:
-            # Get doctor profile
-            cursor.execute("""
-                SELECT id FROM doctors_doctorprofile 
-                WHERE user_id = %s
-            """, [user.id])
+#         with connection.cursor() as cursor:
+#             # Get doctor profile
+#             cursor.execute("""
+#                 SELECT id FROM doctors_doctorprofile 
+#                 WHERE user_id = %s
+#             """, [user.id])
             
-            doctor_row = cursor.fetchone()
-            if not doctor_row:
-                return Response({"detail": "User is not a doctor."}, status=400)
+#             doctor_row = cursor.fetchone()
+#             if not doctor_row:
+#                 return Response({"detail": "User is not a doctor."}, status=400)
             
-            doctor_id = doctor_row[0]
+#             doctor_id = doctor_row[0]
             
-            # Get all past appointments
-            cursor.execute("""
-                SELECT 
-                    pa.id,
-                    pa.patient_id,
-                    CONCAT(u.first_name, ' ', u.last_name) as patient_name,
-                    pa.clinic_id,
-                    c.name as clinic_name,
-                    pa.scheduled_time,
-                    pa.status,
-                    pa.notes,
-                    pa.created_at,
-                    pa.completed_at
-                FROM appointments_pastappointment pa
-                INNER JOIN patients_patientprofile p ON pa.patient_id = p.id
-                INNER JOIN users_user u ON p.user_id = u.id
-                INNER JOIN clinic_clinic c ON pa.clinic_id = c.id
-                WHERE pa.doctor_id = %s
-                ORDER BY pa.scheduled_time DESC
-            """, [doctor_id])
+#             # Get all past appointments
+#             cursor.execute("""
+#                 SELECT 
+#                     pa.id,
+#                     pa.patient_id,
+#                     CONCAT(u.first_name, ' ', u.last_name) as patient_name,
+#                     pa.clinic_id,
+#                     c.name as clinic_name,
+#                     pa.scheduled_time,
+#                     pa.status,
+#                     pa.notes,
+#                     pa.created_at,
+#                     pa.completed_at
+#                 FROM appointments_pastappointment pa
+#                 INNER JOIN patients_patientprofile p ON pa.patient_id = p.id
+#                 INNER JOIN users_user u ON p.user_id = u.id
+#                 INNER JOIN clinic_clinic c ON pa.clinic_id = c.id
+#                 WHERE pa.doctor_id = %s
+#                 ORDER BY pa.scheduled_time DESC
+#             """, [doctor_id])
             
-            past_appointments = dictfetchall(cursor)
+#             past_appointments = dictfetchall(cursor)
         
-        serializer = DoctorPastAppointmentSerializer(past_appointments, many=True)
-        return Response(serializer.data)
+#         serializer = DoctorPastAppointmentSerializer(past_appointments, many=True)
+#         return Response(serializer.data)
