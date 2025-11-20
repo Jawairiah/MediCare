@@ -1,15 +1,18 @@
-# patients/views.py
+# patients/views.py - POSTGRESQL COMPATIBLE VERSION
 from django.db import connection
 from rest_framework.response import Response
 from rest_framework import permissions
 from rest_framework.views import APIView
 from datetime import datetime, timedelta, date
+from django.utils import timezone
 from patients.serializers import (
     DoctorListSerializer,
     DoctorDetailSerializer,
     AppointmentSerializer,
-    PastAppointmentSerializer
+    PastAppointmentSerializer,
+    PatientProfileSerializer
 )
+import re
 
 
 def dictfetchall(cursor):
@@ -27,6 +30,152 @@ def dictfetchone(cursor):
     return dict(zip(columns, row))
 
 
+def validate_phone(phone):
+    """Validate phone number format"""
+    if not phone:
+        return True
+    # Basic phone validation: 10-15 digits with optional + and spaces/dashes
+    pattern = r'^\+?[\d\s\-]{10,15}$'
+    return bool(re.match(pattern, phone.replace(' ', '').replace('-', '')))
+
+
+class PatientProfileView(APIView):
+    """View and update patient profile"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """Get patient profile"""
+        user = request.user
+        
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT 
+                    pp.id,
+                    pp.user_id,
+                    u.email,
+                    u.first_name,
+                    u.last_name,
+                    pp.date_of_birth,
+                    pp.gender,
+                    pp.phone,
+                    pp.address,
+                    pp.created_at
+                FROM patients_patientprofile pp
+                INNER JOIN users_user u ON pp.user_id = u.id
+                WHERE pp.user_id = %s
+            """, [user.id])
+            
+            profile = dictfetchone(cursor)
+            
+            if not profile:
+                return Response({"detail": "Patient profile not found."}, status=404)
+            
+            # Calculate age if date_of_birth exists
+            if profile.get('date_of_birth'):
+                today = date.today()
+                dob = profile['date_of_birth']
+                age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+                profile['age'] = age
+            else:
+                profile['age'] = None
+        
+        serializer = PatientProfileSerializer(profile)
+        return Response(serializer.data)
+
+    def put(self, request):
+        """Update patient profile"""
+        user = request.user
+        
+        # Get updatable fields
+        first_name = request.data.get("first_name")
+        last_name = request.data.get("last_name")
+        email = request.data.get("email")
+        date_of_birth = request.data.get("date_of_birth")
+        gender = request.data.get("gender")
+        phone = request.data.get("phone")
+        address = request.data.get("address")
+        
+        # Validate phone if provided
+        if phone and not validate_phone(phone):
+            return Response({"error": "Invalid phone number format."}, status=400)
+        
+        # Validate gender if provided
+        if gender and gender not in ['Male', 'Female', 'Other', 'male', 'female', 'other', '']:
+            return Response({"error": "Invalid gender value."}, status=400)
+        
+        with connection.cursor() as cursor:
+            # Check if patient profile exists
+            cursor.execute("""
+                SELECT id FROM patients_patientprofile WHERE user_id = %s
+            """, [user.id])
+            
+            if not cursor.fetchone():
+                return Response({"error": "Patient profile not found."}, status=404)
+            
+            # Check email uniqueness if email is being changed
+            if email and email != user.email:
+                cursor.execute("""
+                    SELECT id FROM users_user WHERE email = %s AND id != %s
+                """, [email, user.id])
+                
+                if cursor.fetchone():
+                    return Response({"error": "Email already in use."}, status=400)
+            
+            # Update user table fields
+            user_updates = []
+            user_params = []
+            
+            if first_name is not None:
+                user_updates.append("first_name = %s")
+                user_params.append(first_name)
+            
+            if last_name is not None:
+                user_updates.append("last_name = %s")
+                user_params.append(last_name)
+            
+            if email is not None:
+                user_updates.append("email = %s")
+                user_params.append(email)
+            
+            if user_updates:
+                user_params.append(user.id)
+                cursor.execute(f"""
+                    UPDATE users_user 
+                    SET {', '.join(user_updates)}
+                    WHERE id = %s
+                """, user_params)
+            
+            # Update patient profile fields
+            profile_updates = []
+            profile_params = []
+            
+            if date_of_birth is not None:
+                profile_updates.append("date_of_birth = %s")
+                profile_params.append(date_of_birth if date_of_birth else None)
+            
+            if gender is not None:
+                profile_updates.append("gender = %s")
+                profile_params.append(gender)
+            
+            if phone is not None:
+                profile_updates.append("phone = %s")
+                profile_params.append(phone)
+            
+            if address is not None:
+                profile_updates.append("address = %s")
+                profile_params.append(address)
+            
+            if profile_updates:
+                profile_params.append(user.id)
+                cursor.execute(f"""
+                    UPDATE patients_patientprofile 
+                    SET {', '.join(profile_updates)}
+                    WHERE user_id = %s
+                """, profile_params)
+        
+        return Response({"message": "Profile updated successfully."})
+
+
 class PatientDoctorListView(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
@@ -36,7 +185,6 @@ class PatientDoctorListView(APIView):
         name = request.query_params.get("name")
 
         with connection.cursor() as cursor:
-            # Build dynamic SQL query
             sql = """
                 SELECT DISTINCT
                     dp.id,
@@ -69,7 +217,6 @@ class PatientDoctorListView(APIView):
             cursor.execute(sql, params)
             doctors = dictfetchall(cursor)
 
-            # For each doctor, get their clinics
             for doctor in doctors:
                 cursor.execute("""
                     SELECT 
@@ -92,7 +239,6 @@ class PatientDoctorDetailView(APIView):
 
     def get(self, request, pk):
         with connection.cursor() as cursor:
-            # Get doctor details
             cursor.execute("""
                 SELECT 
                     dp.id,
@@ -111,7 +257,6 @@ class PatientDoctorDetailView(APIView):
             if not doctor:
                 return Response({"detail": "Doctor not found."}, status=404)
 
-            # Get clinics
             cursor.execute("""
                 SELECT 
                     dc.clinic_id,
@@ -140,35 +285,26 @@ class PatientDoctorAvailabilityView(APIView):
         if not doctor_id or not clinic_id or not date_str:
             return Response({"error": "doctor_id, clinic_id, and date are required."}, status=400)
 
-        # Validate date
         try:
             availability_date = datetime.strptime(date_str, "%Y-%m-%d").date()
         except ValueError:
             return Response({"error": "Invalid date format. Use YYYY-MM-DD"}, status=400)
 
-        # Cannot check past dates
         if availability_date < date.today():
-            return Response({
-                "date": date_str,
-                "slots": [],
-                "message": "Cannot book appointments in the past"
-            })
+            return Response({"date": date_str, "slots": [], "message": "Cannot book appointments in the past"})
 
         with connection.cursor() as cursor:
-
-            # Validate doctor-clinic relation
             cursor.execute("""
                 SELECT id FROM doctors_doctorclinic
                 WHERE doctor_id = %s AND clinic_id = %s
             """, [doctor_id, clinic_id])
 
-            row = cursor.fetchone()
-            if not row:
+            dc_row = cursor.fetchone()
+            if not dc_row:
                 return Response({"error": "Invalid doctor-clinic relationship."}, status=404)
 
-            doctor_clinic_id = row[0]
+            doctor_clinic_id = dc_row[0]
 
-            # Fetch availability
             cursor.execute("""
                 SELECT 
                     date, start_time, end_time, slot_duration
@@ -182,44 +318,39 @@ class PatientDoctorAvailabilityView(APIView):
             if not availability:
                 return Response({"date": date_str, "slots": [], "message": "No availability set for this date"})
 
-            # Build time slots
             start_dt = datetime.combine(availability['date'], availability['start_time'])
             end_dt = datetime.combine(availability['date'], availability['end_time'])
             delta = timedelta(minutes=availability['slot_duration'])
 
             all_slots = []
             current = start_dt
+            
             now = datetime.now()
-
             while current < end_dt:
                 if availability_date == date.today():
                     if current > now:
                         all_slots.append(current.strftime("%H:%M"))
                 else:
                     all_slots.append(current.strftime("%H:%M"))
-
                 current += delta
 
-            # -------------------------
-            # Get booked slots correctly
-            # -------------------------
+            # POSTGRESQL FIX: Use scheduled_time::time instead of TIME(scheduled_time)
             cursor.execute("""
-                SELECT scheduled_time::time
+                SELECT scheduled_time::time as start_time
                 FROM appointments_appointment
-                WHERE doctor_id = %s
-                  AND clinic_id = %s
-                  AND DATE(scheduled_time) = %s
+                WHERE doctor_id = %s 
+                  AND clinic_id = %s 
+                  AND scheduled_time::date = %s
                   AND status IN ('booked', 'rescheduled')
             """, [doctor_id, clinic_id, availability_date])
 
             booked_rows = cursor.fetchall()
-            booked_set = {r[0].strftime("%H:%M") for r in booked_rows}
+            booked_set = {row[0].strftime("%H:%M") for row in booked_rows}
 
-            # Filter free slots
             free_slots = [slot for slot in all_slots if slot not in booked_set]
 
         return Response({
-            "date": date_str,
+            "date": date_str, 
             "slots": free_slots,
             "total_slots": len(all_slots),
             "available_slots": len(free_slots),
@@ -244,19 +375,14 @@ class PatientBookAppointmentView(APIView):
         except ValueError:
             return Response({"error": "scheduled_time must be in YYYY-MM-DDTHH:MM format."}, status=400)
 
-        # VALIDATION: Cannot book appointments in the past
         if scheduled_time < datetime.now():
-            return Response({
-                "error": "Cannot book appointments in the past"
-            }, status=400)
+            return Response({"error": "Cannot book appointments in the past"}, status=400)
 
         user = request.user
 
         with connection.cursor() as cursor:
-            # Get patient profile
             cursor.execute("""
-                SELECT id FROM patients_patientprofile 
-                WHERE user_id = %s
+                SELECT id FROM patients_patientprofile WHERE user_id = %s
             """, [user.id])
 
             patient_row = cursor.fetchone()
@@ -265,7 +391,6 @@ class PatientBookAppointmentView(APIView):
 
             patient_id = patient_row[0]
 
-            # Validate doctor_clinic relationship
             cursor.execute("""
                 SELECT id FROM doctors_doctorclinic
                 WHERE doctor_id = %s AND clinic_id = %s
@@ -277,7 +402,6 @@ class PatientBookAppointmentView(APIView):
 
             doctor_clinic_id = dc_row[0]
 
-            # Validate availability exists for that date
             cursor.execute("""
                 SELECT start_time, end_time, slot_duration
                 FROM doctors_doctoravailability
@@ -290,19 +414,16 @@ class PatientBookAppointmentView(APIView):
             if not availability:
                 return Response({"error": "Doctor is not available on this date."}, status=400)
 
-            # Check if scheduled_time is within availability window
             start_dt = datetime.combine(scheduled_time.date(), availability['start_time'])
             end_dt = datetime.combine(scheduled_time.date(), availability['end_time'])
 
             if not (start_dt <= scheduled_time < end_dt):
                 return Response({"error": "Scheduled time is outside doctor's availability window."}, status=400)
 
-            # Check slot alignment
             diff_minutes = int((scheduled_time - start_dt).total_seconds() / 60)
             if diff_minutes % availability['slot_duration'] != 0:
                 return Response({"error": "Scheduled time does not align with slot duration."}, status=400)
 
-            # Check if slot already booked
             cursor.execute("""
                 SELECT id FROM appointments_appointment
                 WHERE doctor_id = %s 
@@ -314,7 +435,6 @@ class PatientBookAppointmentView(APIView):
             if cursor.fetchone():
                 return Response({"error": "This slot is already booked."}, status=409)
 
-            # Create the appointment
             cursor.execute("""
                 INSERT INTO appointments_appointment 
                 (doctor_id, clinic_id, patient_id, scheduled_time, status, notes, created_at)
@@ -346,10 +466,8 @@ class PatientMyAppointmentsView(APIView):
         user = request.user
 
         with connection.cursor() as cursor:
-            # Get patient profile
             cursor.execute("""
-                SELECT id FROM patients_patientprofile 
-                WHERE user_id = %s
+                SELECT id FROM patients_patientprofile WHERE user_id = %s
             """, [user.id])
 
             patient_row = cursor.fetchone()
@@ -358,7 +476,6 @@ class PatientMyAppointmentsView(APIView):
 
             patient_id = patient_row[0]
 
-            # Get all upcoming appointments
             cursor.execute("""
                 SELECT 
                     a.id,
@@ -394,10 +511,8 @@ class PatientPastAppointmentsView(APIView):
         user = request.user
 
         with connection.cursor() as cursor:
-            # Get patient profile
             cursor.execute("""
-                SELECT id FROM patients_patientprofile 
-                WHERE user_id = %s
+                SELECT id FROM patients_patientprofile WHERE user_id = %s
             """, [user.id])
 
             patient_row = cursor.fetchone()
@@ -406,7 +521,6 @@ class PatientPastAppointmentsView(APIView):
 
             patient_id = patient_row[0]
 
-            # Get all past appointments
             cursor.execute("""
                 SELECT 
                     pa.id,
@@ -441,10 +555,8 @@ class PatientCancelAppointmentView(APIView):
         user = request.user
 
         with connection.cursor() as cursor:
-            # Get patient profile
             cursor.execute("""
-                SELECT id FROM patients_patientprofile 
-                WHERE user_id = %s
+                SELECT id FROM patients_patientprofile WHERE user_id = %s
             """, [user.id])
 
             patient_row = cursor.fetchone()
@@ -453,7 +565,6 @@ class PatientCancelAppointmentView(APIView):
 
             patient_id = patient_row[0]
 
-            # Check if appointment exists and belongs to this patient
             cursor.execute("""
                 SELECT id, status, scheduled_time 
                 FROM appointments_appointment
@@ -467,10 +578,9 @@ class PatientCancelAppointmentView(APIView):
             if appointment['status'] == 'cancelled':
                 return Response({"error": "Appointment is already cancelled."}, status=400)
 
-            if appointment['scheduled_time'] < datetime.now():
+            if appointment['scheduled_time'] < timezone.now():
                 return Response({"error": "Cannot cancel past appointments."}, status=400)
 
-            # Update appointment status to cancelled
             cursor.execute("""
                 UPDATE appointments_appointment
                 SET status = 'cancelled'

@@ -1,14 +1,15 @@
-# doctors/views.py
+# doctors/views.py - POSTGRESQL COMPATIBLE VERSION
 from django.db import connection
 from rest_framework.response import Response
 from rest_framework import status, permissions
 from rest_framework.views import APIView
-from datetime import datetime, date, time as dt_time
+from datetime import datetime, date
 from doctors.serializers import (
     DoctorClinicSerializer, 
     DoctorAvailabilitySerializer,
     DoctorAppointmentSerializer,
-    DoctorPastAppointmentSerializer
+    DoctorPastAppointmentSerializer,
+    DoctorProfileSerializer
 )
 
 
@@ -27,6 +28,126 @@ def dictfetchone(cursor):
     return dict(zip(columns, row))
 
 
+class DoctorProfileView(APIView):
+    """View and update doctor profile"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        """Get doctor profile"""
+        user = request.user
+        
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT 
+                    dp.id,
+                    dp.user_id,
+                    u.email,
+                    u.first_name,
+                    u.last_name,
+                    dp.specialization,
+                    dp.qualification,
+                    dp.experience_years,
+                    dp.consultation_fee,
+                    dp.created_at
+                FROM doctors_doctorprofile dp
+                INNER JOIN users_user u ON dp.user_id = u.id
+                WHERE dp.user_id = %s
+            """, [user.id])
+            
+            profile = dictfetchone(cursor)
+            
+            if not profile:
+                return Response({"detail": "Doctor profile not found."}, status=404)
+        
+        serializer = DoctorProfileSerializer(profile)
+        return Response(serializer.data)
+
+    def put(self, request):
+        """Update doctor profile"""
+        user = request.user
+        
+        # Get updatable fields
+        first_name = request.data.get("first_name")
+        last_name = request.data.get("last_name")
+        email = request.data.get("email")
+        specialization = request.data.get("specialization")
+        qualification = request.data.get("qualification")
+        experience_years = request.data.get("experience_years")
+        consultation_fee = request.data.get("consultation_fee")
+        
+        with connection.cursor() as cursor:
+            # Check if doctor profile exists
+            cursor.execute("""
+                SELECT id FROM doctors_doctorprofile WHERE user_id = %s
+            """, [user.id])
+            
+            if not cursor.fetchone():
+                return Response({"error": "Doctor profile not found."}, status=404)
+            
+            # Check email uniqueness if email is being changed
+            if email and email != user.email:
+                cursor.execute("""
+                    SELECT id FROM users_user WHERE email = %s AND id != %s
+                """, [email, user.id])
+                
+                if cursor.fetchone():
+                    return Response({"error": "Email already in use."}, status=400)
+            
+            # Update user table fields
+            user_updates = []
+            user_params = []
+            
+            if first_name is not None:
+                user_updates.append("first_name = %s")
+                user_params.append(first_name)
+            
+            if last_name is not None:
+                user_updates.append("last_name = %s")
+                user_params.append(last_name)
+            
+            if email is not None:
+                user_updates.append("email = %s")
+                user_params.append(email)
+            
+            if user_updates:
+                user_params.append(user.id)
+                cursor.execute(f"""
+                    UPDATE users_user 
+                    SET {', '.join(user_updates)}
+                    WHERE id = %s
+                """, user_params)
+            
+            # Update doctor profile fields
+            profile_updates = []
+            profile_params = []
+            
+            if specialization is not None:
+                profile_updates.append("specialization = %s")
+                profile_params.append(specialization)
+            
+            if qualification is not None:
+                profile_updates.append("qualification = %s")
+                profile_params.append(qualification)
+            
+            if experience_years is not None:
+                profile_updates.append("experience_years = %s")
+                profile_params.append(experience_years)
+            
+            if consultation_fee is not None:
+                profile_updates.append("consultation_fee = %s")
+                profile_params.append(consultation_fee)
+            
+            if profile_updates:
+                profile_params.append(user.id)
+                cursor.execute(f"""
+                    UPDATE doctors_doctorprofile 
+                    SET {', '.join(profile_updates)}
+                    WHERE user_id = %s
+                """, profile_params)
+        
+        return Response({"message": "Profile updated successfully."})
+
+
 class DoctorClinicListView(APIView):
     """Get list of clinics where the doctor is registered"""
     permission_classes = [permissions.IsAuthenticated]
@@ -35,10 +156,8 @@ class DoctorClinicListView(APIView):
         user = request.user
         
         with connection.cursor() as cursor:
-            # Check if user is a doctor
             cursor.execute("""
-                SELECT id FROM doctors_doctorprofile 
-                WHERE user_id = %s
+                SELECT id FROM doctors_doctorprofile WHERE user_id = %s
             """, [user.id])
             
             doctor_row = cursor.fetchone()
@@ -47,7 +166,6 @@ class DoctorClinicListView(APIView):
             
             doctor_id = doctor_row[0]
             
-            # Get all clinics for this doctor with full clinic details
             cursor.execute("""
                 SELECT 
                     dc.id,
@@ -83,10 +201,8 @@ class DoctorClinicAddView(APIView):
         user = request.user
         
         with connection.cursor() as cursor:
-            # Get doctor profile
             cursor.execute("""
-                SELECT id FROM doctors_doctorprofile 
-                WHERE user_id = %s
+                SELECT id FROM doctors_doctorprofile WHERE user_id = %s
             """, [user.id])
             
             doctor_row = cursor.fetchone()
@@ -95,12 +211,10 @@ class DoctorClinicAddView(APIView):
             
             doctor_id = doctor_row[0]
             
-            # Check if clinic exists
             cursor.execute("SELECT id FROM clinic_clinic WHERE id = %s", [clinic_id])
             if not cursor.fetchone():
                 return Response({"error": "Invalid clinic ID"}, status=400)
             
-            # Check if relationship already exists
             cursor.execute("""
                 SELECT id FROM doctors_doctorclinic 
                 WHERE doctor_id = %s AND clinic_id = %s
@@ -110,7 +224,6 @@ class DoctorClinicAddView(APIView):
             if existing:
                 return Response({"message": "Doctor already associated with this clinic."}, status=200)
             
-            # Insert new doctor-clinic relationship
             cursor.execute("""
                 INSERT INTO doctors_doctorclinic (doctor_id, clinic_id, consultation_fee, created_at)
                 VALUES (%s, %s, %s, NOW())
@@ -120,6 +233,56 @@ class DoctorClinicAddView(APIView):
             new_id = cursor.fetchone()[0]
         
         return Response({"message": "Clinic added successfully.", "id": new_id}, status=201)
+
+
+class DoctorClinicRemoveView(APIView):
+    """Remove/drop a clinic association if no appointments exist"""
+    permission_classes = [permissions.IsAuthenticated]
+
+    def delete(self, request, clinic_id):
+        user = request.user
+        
+        with connection.cursor() as cursor:
+            cursor.execute("""
+                SELECT id FROM doctors_doctorprofile WHERE user_id = %s
+            """, [user.id])
+            
+            doctor_row = cursor.fetchone()
+            if not doctor_row:
+                return Response({"error": "User is not a doctor."}, status=400)
+            
+            doctor_id = doctor_row[0]
+            
+            # Check if doctor-clinic relationship exists
+            cursor.execute("""
+                SELECT id FROM doctors_doctorclinic 
+                WHERE doctor_id = %s AND clinic_id = %s
+            """, [doctor_id, clinic_id])
+            
+            if not cursor.fetchone():
+                return Response({"error": "Clinic association not found."}, status=404)
+            
+            # Check for existing appointments at this clinic
+            cursor.execute("""
+                SELECT COUNT(*) FROM appointments_appointment
+                WHERE doctor_id = %s AND clinic_id = %s
+                AND status IN ('booked', 'rescheduled')
+            """, [doctor_id, clinic_id])
+            
+            appointment_count = cursor.fetchone()[0]
+            
+            if appointment_count > 0:
+                return Response({
+                    "error": f"Cannot remove clinic. {appointment_count} active appointment(s) exist."
+                }, status=400)
+            
+            # Delete the relationship
+            cursor.execute("""
+                DELETE FROM doctors_doctorclinic 
+                WHERE doctor_id = %s AND clinic_id = %s
+            """, [doctor_id, clinic_id])
+        
+        return Response({"message": "Clinic association removed successfully."})
 
 
 class DoctorAvailabilityCreateView(APIView):
@@ -135,7 +298,6 @@ class DoctorAvailabilityCreateView(APIView):
         if not all([doctor_clinic_id, date_str, start_time_str, end_time_str]):
             return Response({"error": "Missing required fields"}, status=400)
 
-        # Parse and validate date/time
         try:
             availability_date = datetime.strptime(date_str, "%Y-%m-%d").date()
             start_time = datetime.strptime(start_time_str, "%H:%M").time()
@@ -143,33 +305,22 @@ class DoctorAvailabilityCreateView(APIView):
         except ValueError:
             return Response({"error": "Invalid date or time format"}, status=400)
 
-        # VALIDATION: Cannot set availability for past dates
         if availability_date < date.today():
-            return Response({
-                "error": "Cannot set availability for past dates"
-            }, status=400)
+            return Response({"error": "Cannot set availability for past dates"}, status=400)
 
-        # VALIDATION: If date is today, check if time has passed
         if availability_date == date.today():
             current_time = datetime.now().time()
             if start_time < current_time:
-                return Response({
-                    "error": "Cannot set availability for past time slots"
-                }, status=400)
+                return Response({"error": "Cannot set availability for past time slots"}, status=400)
 
-        # Validate time range
         if start_time >= end_time:
-            return Response({
-                "error": "Start time must be before end time"
-            }, status=400)
+            return Response({"error": "Start time must be before end time"}, status=400)
 
         user = request.user
         
         with connection.cursor() as cursor:
-            # Get doctor profile
             cursor.execute("""
-                SELECT id FROM doctors_doctorprofile 
-                WHERE user_id = %s
+                SELECT id FROM doctors_doctorprofile WHERE user_id = %s
             """, [user.id])
             
             doctor_row = cursor.fetchone()
@@ -178,7 +329,6 @@ class DoctorAvailabilityCreateView(APIView):
             
             doctor_id = doctor_row[0]
             
-            # Verify doctor_clinic belongs to this doctor
             cursor.execute("""
                 SELECT id FROM doctors_doctorclinic 
                 WHERE id = %s AND doctor_id = %s
@@ -187,14 +337,14 @@ class DoctorAvailabilityCreateView(APIView):
             if not cursor.fetchone():
                 return Response({"error": "You can only set availability for your own clinics."}, status=403)
             
-            # Check if there are any appointments for this date/time
+            # POSTGRESQL FIX: Use scheduled_time::date and scheduled_time::time
             cursor.execute("""
                 SELECT COUNT(*) FROM appointments_appointment
                 WHERE doctor_id = %s 
-                AND scheduled_time::date = %s
-                AND scheduled_time::time >= %s
-                AND scheduled_time::time < %s
-                AND status != 'cancelled'
+                  AND scheduled_time::date = %s
+                  AND scheduled_time::time >= %s
+                  AND scheduled_time::time < %s
+                  AND status != 'cancelled'
             """, [doctor_id, availability_date, start_time, end_time])
             
             appt_count = cursor.fetchone()[0]
@@ -203,7 +353,6 @@ class DoctorAvailabilityCreateView(APIView):
                     "error": "Cannot update availability. Appointments exist in this time slot."
                 }, status=400)
             
-            # Check if availability already exists for this slot
             cursor.execute("""
                 SELECT id FROM doctors_doctoravailability
                 WHERE doctor_clinic_id = %s 
@@ -214,7 +363,6 @@ class DoctorAvailabilityCreateView(APIView):
             existing = cursor.fetchone()
             
             if existing:
-                # Update existing
                 cursor.execute("""
                     UPDATE doctors_doctoravailability
                     SET end_time = %s, slot_duration = %s, is_available = TRUE
@@ -225,7 +373,6 @@ class DoctorAvailabilityCreateView(APIView):
                 availability_id = cursor.fetchone()[0]
                 message = "Availability updated successfully."
             else:
-                # Insert new
                 cursor.execute("""
                     INSERT INTO doctors_doctoravailability 
                     (doctor_clinic_id, date, start_time, end_time, slot_duration, is_available, created_at)
@@ -247,10 +394,8 @@ class DoctorMyAppointmentsView(APIView):
         user = request.user
         
         with connection.cursor() as cursor:
-            # Get doctor profile
             cursor.execute("""
-                SELECT id FROM doctors_doctorprofile 
-                WHERE user_id = %s
+                SELECT id FROM doctors_doctorprofile WHERE user_id = %s
             """, [user.id])
             
             doctor_row = cursor.fetchone()
@@ -259,7 +404,6 @@ class DoctorMyAppointmentsView(APIView):
             
             doctor_id = doctor_row[0]
             
-            # Get all upcoming appointments
             cursor.execute("""
                 SELECT 
                     a.id,
@@ -295,10 +439,8 @@ class DoctorPastAppointmentsView(APIView):
         user = request.user
         
         with connection.cursor() as cursor:
-            # Get doctor profile
             cursor.execute("""
-                SELECT id FROM doctors_doctorprofile 
-                WHERE user_id = %s
+                SELECT id FROM doctors_doctorprofile WHERE user_id = %s
             """, [user.id])
             
             doctor_row = cursor.fetchone()
@@ -307,7 +449,6 @@ class DoctorPastAppointmentsView(APIView):
             
             doctor_id = doctor_row[0]
             
-            # Get all past appointments
             cursor.execute("""
                 SELECT 
                     pa.id,

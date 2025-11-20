@@ -1,6 +1,21 @@
 # patients/serializers.py
 from rest_framework import serializers
 
+class PatientProfileSerializer(serializers.Serializer):
+    """Serializer for patient profile view/edit"""
+    id = serializers.IntegerField(read_only=True)
+    user_id = serializers.IntegerField(read_only=True)
+    email = serializers.EmailField()
+    first_name = serializers.CharField(max_length=100)
+    last_name = serializers.CharField(max_length=100)
+    date_of_birth = serializers.DateField(allow_null=True, required=False)
+    age = serializers.IntegerField(read_only=True, required=False)
+    gender = serializers.CharField(max_length=10, allow_blank=True, required=False)
+    phone = serializers.CharField(max_length=20, allow_blank=True, required=False)
+    address = serializers.CharField(allow_blank=True, required=False)
+    created_at = serializers.DateTimeField(read_only=True)
+    
+
 class DoctorAvailableSlotsSerializer(serializers.Serializer):
     date = serializers.DateField()
     slots = serializers.ListField(child=serializers.CharField())
