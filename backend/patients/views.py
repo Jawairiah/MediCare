@@ -591,3 +591,100 @@ class PatientCancelAppointmentView(APIView):
             "message": "Appointment cancelled successfully.",
             "appointment_id": appointment_id
         })
+        
+
+class PatientDoctorListView(APIView):
+    """
+    Enhanced doctor search with multiple filters
+    
+    Query Parameters:
+    - name: Search by doctor's first or last name (partial match, case-insensitive)
+    - specialization: Filter by specialization (partial match, case-insensitive)
+    - clinic_name: Filter by clinic name (partial match, case-insensitive)
+    
+    Examples:
+    GET /api/patient/doctors/?name=smith
+    GET /api/patient/doctors/?specialization=cardio
+    GET /api/patient/doctors/?clinic_name=City Hospital
+    GET /api/patient/doctors/?name=john&specialization=cardiology&clinic_name=city
+    """
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        # Get search parameters
+        name = request.query_params.get("name")
+        specialization = request.query_params.get("specialization")
+        clinic_name = request.query_params.get("clinic_name")
+
+        with connection.cursor() as cursor:
+            # Build dynamic SQL query
+            sql = """
+                SELECT DISTINCT
+                    dp.id,
+                    dp.user_id,
+                    u.first_name,
+                    u.last_name,
+                    dp.specialization,
+                    dp.qualification,
+                    dp.experience_years
+                FROM doctors_doctorprofile dp
+                INNER JOIN users_user u ON dp.user_id = u.id
+                WHERE 1=1
+            """
+            params = []
+
+            # Filter by doctor name (first OR last name)
+            if name:
+                sql += " AND (u.first_name ILIKE %s OR u.last_name ILIKE %s)"
+                params.extend([f"%{name}%", f"%{name}%"])
+
+            # Filter by specialization
+            if specialization:
+                sql += " AND dp.specialization ILIKE %s"
+                params.append(f"%{specialization}%")
+
+            # Filter by clinic name
+            # This searches for doctors who are registered at clinics matching the clinic_name
+            if clinic_name:
+                sql += """
+                    AND EXISTS (
+                        SELECT 1 
+                        FROM doctors_doctorclinic dc
+                        INNER JOIN clinic_clinic c ON dc.clinic_id = c.id
+                        WHERE dc.doctor_id = dp.id 
+                        AND c.name ILIKE %s
+                    )
+                """
+                params.append(f"%{clinic_name}%")
+
+            # Order results by name
+            sql += " ORDER BY u.first_name, u.last_name"
+
+            cursor.execute(sql, params)
+            doctors = dictfetchall(cursor)
+
+            # For each doctor, get their associated clinics
+            for doctor in doctors:
+                cursor.execute("""
+                    SELECT 
+                        dc.clinic_id,
+                        c.name as clinic_name,
+                        dc.consultation_fee
+                    FROM doctors_doctorclinic dc
+                    INNER JOIN clinic_clinic c ON dc.clinic_id = c.id
+                    WHERE dc.doctor_id = %s
+                    ORDER BY c.name
+                """, [doctor['id']])
+                
+                doctor['clinics'] = dictfetchall(cursor)
+
+        serializer = DoctorListSerializer(doctors, many=True)
+        return Response({
+            "count": len(doctors),
+            "filters_applied": {
+                "name": name,
+                "specialization": specialization,
+                "clinic_name": clinic_name
+            },
+            "results": serializer.data
+        })
