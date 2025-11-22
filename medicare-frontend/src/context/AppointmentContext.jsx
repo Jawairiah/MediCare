@@ -85,6 +85,7 @@ export function AppointmentProvider({ children }) {
   const bookAppointment = async (doctorId, dateStr, start) => {
     const r = await api.createAppointment({ doctorId: Number(doctorId), date: dateStr, start });
     if (r.ok && r.data?.id) {
+      try { window.notify({ title: 'Appointment Booked', message: `Booked with doctor #${doctorId} on ${dateStr} at ${start}`, type: 'success', meta: { type: 'Appointment Booked', withName: `Doctor #${doctorId}`, clinic_name: r.data?.clinic_name, date: dateStr, time: start, status: 'Booked', created_at: new Date().toISOString() } }); } catch {}
       addNotification({ type: 'success', message: `Booked with doctor #${doctorId} on ${dateStr} at ${start}` });
       return { ok: true, id: r.data.id };
     }
@@ -97,6 +98,7 @@ export function AppointmentProvider({ children }) {
     const id = Date.now();
     const appt = { id, doctorId: Number(doctorId), doctorName: doctor.name, patientEmail: user?.email || 'guest@medicare', date: dateStr, start: slot.start, end: slot.end, status: 'booked' };
     setAppointments(prev => [appt, ...prev]);
+    try { window.notify({ title: 'Appointment Booked', message: `Booked with ${doctor.name} on ${dateStr} at ${slot.start}`, type: 'success', meta: { type: 'Appointment Booked', withName: doctor.name, clinic_name: doctor.location || 'Clinic', date: dateStr, time: slot.start, status: 'Booked', created_at: new Date().toISOString() } }); } catch {}
     addNotification({ type: 'success', message: `Booked with ${doctor.name} on ${dateStr} at ${slot.start}` });
     return { ok: true, id, demo: true };
   };
@@ -104,18 +106,23 @@ export function AppointmentProvider({ children }) {
   const cancelAppointment = async (id) => {
     const r = await api.cancelAppointment(id);
     if (r.ok) {
+      try { window.notify({ title: 'Appointment Cancelled', message: `Cancelled appointment #${id}`, type: 'warn', meta: { type: 'Appointment Cancelled', status: 'Cancelled', created_at: new Date().toISOString() } }); } catch {}
       addNotification({ type: 'info', message: `Cancelled appointment #${id}` });
       return { ok: true };
     }
     setAppointments(prev => prev.map(a => a.id === id ? { ...a, status: 'cancelled' } : a));
     const appt = appointments.find(a => a.id === id);
-    if (appt) addNotification({ type: 'info', message: `Cancelled appointment on ${appt.date} at ${appt.start}` });
+    if (appt) {
+      try { window.notify({ title: 'Appointment Cancelled', message: `Cancelled appointment on ${appt.date} at ${appt.start}`, type: 'warn', meta: { type: 'Appointment Cancelled', withName: appt.doctorName, clinic_name: appt.clinic_name || 'Clinic', date: appt.date, time: appt.start, status: 'Cancelled', created_at: new Date().toISOString() } }); } catch {}
+      addNotification({ type: 'info', message: `Cancelled appointment on ${appt.date} at ${appt.start}` });
+    }
     return { ok: true, demo: true };
   };
 
   const rescheduleAppointment = async (id, dateStr, start) => {
     const r = await api.rescheduleAppointment(id, { date: dateStr, start });
     if (r.ok) {
+      try { window.notify({ title: 'Appointment Rescheduled', message: `Rescheduled appointment #${id} to ${dateStr} at ${start}`, type: 'info', meta: { type: 'Appointment Rescheduled', date: dateStr, time: start, status: 'Rescheduled', created_at: new Date().toISOString() } }); } catch {}
       addNotification({ type: 'success', message: `Rescheduled appointment #${id} to ${dateStr} at ${start}` });
       return { ok: true };
     }
@@ -125,6 +132,7 @@ export function AppointmentProvider({ children }) {
     const slot = slots.find(s => s.start === start);
     if (!slot) return { ok: false, error: 'New slot not available' };
     setAppointments(prev => prev.map(a => a.id === id ? { ...a, date: dateStr, start: slot.start, end: slot.end, status: 'booked' } : a));
+    try { window.notify({ title: 'Appointment Rescheduled', message: `Rescheduled to ${dateStr} at ${slot.start}` , type: 'info', meta: { type: 'Appointment Rescheduled', withName: appt?.doctorName, clinic_name: appt?.clinic_name || 'Clinic', date: dateStr, time: slot.start, status: 'Rescheduled', created_at: new Date().toISOString() } }); } catch {}
     addNotification({ type: 'success', message: `Rescheduled to ${dateStr} at ${slot.start}` });
     return { ok: true, demo: true };
   };

@@ -32,6 +32,18 @@ export function AuthProvider({ children }) {
         setSelectedRole(role);
         localStorage.setItem('medicare_role', role);
       }
+      // Fetch notifications and trigger popup alerts
+      try {
+        const notifs = await api.getNotifications();
+        if (notifs.ok && Array.isArray(notifs.data)) {
+          const unread = notifs.data.filter(n => !n.read);
+          unread.forEach(n => {
+            const action = n.type || 'Notification';
+            const msg = `${action} with ${n.withName} at ${n.clinic_name} on ${n.date} ${n.time}.`;
+            try { window.notify({ title: action, message: msg, type: 'info', meta: { ...n } }); } catch {}
+          });
+        }
+      } catch {}
       return { ok: true };
     }
     // Fallback demo mode
@@ -40,6 +52,8 @@ export function AuthProvider({ children }) {
       setUser({ email, role });
       setIsAuthenticated(true);
       localStorage.setItem('medicare_auth', 'true');
+      // Demo: also emit a welcome notification
+      try { window.notify({ title: 'Welcome', message: 'You are logged in.', type: 'info' }); } catch {}
       return { ok: true, demo: true };
     }
     return { ok: false, error: r.data?.error || 'Login failed' };

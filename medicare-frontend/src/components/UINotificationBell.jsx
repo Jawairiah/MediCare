@@ -18,7 +18,7 @@ export default function UINotificationBell() {
   return (
     <div className="bell" ref={ref}>
       <button className="btn ghost" onClick={() => setOpen((v) => !v)} aria-label="Notifications">
-        🔔 Notifications
+        🔔 {unreadCount > 0 ? unreadCount : ''}
       </button>
       {unreadCount > 0 && <span className="dot" />}
       {open && (
@@ -35,6 +35,15 @@ export default function UINotificationBell() {
                   <div>
                     <div style={{fontWeight:600}}>{n.title}</div>
                     <div className="subtitle">{n.message}</div>
+                    {n.meta && (
+                      <div className="subtitle">
+                        {n.meta.type && <span>{n.meta.type} • </span>}
+                        {n.meta.withName && <span>With: {n.meta.withName} • </span>}
+                        {n.meta.clinic_name && <span>Clinic: {n.meta.clinic_name} • </span>}
+                        {n.meta.date && n.meta.time && <span>{n.meta.date} at {n.meta.time} • </span>}
+                        {n.meta.created_at && <span>{new Date(n.meta.created_at).toLocaleString()}</span>}
+                      </div>
+                    )}
                   </div>
                   <button className="btn ghost" onClick={() => removeNotification(n.id)}>✕</button>
                 </div>

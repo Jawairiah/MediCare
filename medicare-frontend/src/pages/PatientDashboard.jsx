@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAppointments } from '../context/AppointmentContext';
 
@@ -7,6 +7,7 @@ export default function PatientDashboard() {
   const [editingId, setEditingId] = useState(null);
   const [date, setDate] = useState('');
   const [start, setStart] = useState('');
+  const [slots, setSlots] = useState([]);
 
   const beginReschedule = (a) => {
     setEditingId(a.id);
@@ -19,6 +20,16 @@ export default function PatientDashboard() {
     const res = rescheduleAppointment(a.id, date, start);
     if (res.ok) setEditingId(null);
   };
+
+  useEffect(() => {
+    (async () => {
+      if (!editingId || !date) return setSlots([]);
+      const appt = myAppointments.find(x => x.id === editingId);
+      if (!appt) return setSlots([]);
+      const s = await getSlotsForDate(appt.doctorId, date);
+      setSlots(s || []);
+    })();
+  }, [editingId, date, myAppointments, getSlotsForDate]);
 
   return (
     <div className="card stack">
@@ -49,7 +60,7 @@ export default function PatientDashboard() {
                   <input className="input" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
                   <select className="select" value={start} onChange={(e) => setStart(e.target.value)}>
                     <option value="">Select a slot</option>
-                    {getSlotsForDate(a.doctorId, date).map(s => (
+                    {slots.map(s => (
                       <option key={s.start} value={s.start}>{s.start} - {s.end}</option>
                     ))}
                   </select>

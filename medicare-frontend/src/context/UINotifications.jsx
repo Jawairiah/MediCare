@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import api from '../lib/api';
 
 const UINotificationsContext = createContext(null);
 
@@ -16,6 +17,7 @@ export function UINotificationsProvider({ children }) {
       type: n.type || 'info',
       time: new Date().toISOString(),
       unread: true,
+      meta: n.meta || null,
     };
     setItems((prev) => [item, ...prev]);
     // also push toast
@@ -26,7 +28,17 @@ export function UINotificationsProvider({ children }) {
     }, 4000);
   };
 
-  const markAllRead = () => setItems((prev) => prev.map((i) => ({ ...i, unread: false })));
+  const markAllRead = async () => {
+    setItems((prev) => prev.map((i) => ({ ...i, unread: false })));
+    // Attempt to mark backend notifications read if meta contains original id
+    try {
+      const res = await api.getNotifications();
+      if (res.ok && Array.isArray(res.data)) {
+        const unreadIds = res.data.filter(n => !n.read).map(n => n.id);
+        await Promise.all(unreadIds.map(id => api.markNotificationRead(id)));
+      }
+    } catch {}
+  };
   const removeNotification = (id) => setItems((prev) => prev.filter((i) => i.id !== id));
 
   // Event bus: listen for global notifications
