@@ -1,52 +1,107 @@
-import React from "react";
-import { Routes, Route, Navigate } from "react-router-dom";
-import RoleSelect from "./pages/RoleSelect";
-import Register from "./pages/Register";
-import Login from "./pages/Login";
-import DoctorDashboard from "./pages/doctor/DoctorDashboard";
-import PatientDashboard from "./pages/patient/PatientDashboard";
-import ClinicDetails from "./pages/doctor/ClinicDetails";
-import PrivateRoute from "./components/PrivateRoute";
-import Header from "./components/Header";
+import React from 'react';
+import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
+import './styles.css';
+
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { AppointmentProvider } from './context/AppointmentContext';
+import { NotificationProvider } from './context/NotificationContext';
+import { UINotificationsProvider } from './context/UINotifications.jsx';
+import UINotificationBell from './components/UINotificationBell.jsx';
+import NotificationToast from './components/NotificationToast.jsx';
+
+import RoleSelect from './pages/RoleSelect';
+import Login from './pages/Login';
+import Signup from './pages/Signup';
+import PatientDashboard from './pages/PatientDashboard';
+import DoctorDashboard from './pages/DoctorDashboard.jsx';
+import Search from './pages/Search.jsx';
+import DoctorProfile from './pages/DoctorProfile.jsx';
+import Landing from './pages/Landing.jsx';
+import { initNotifyGlobal } from './utils/notify.js';
 
 export default function App() {
+  initNotifyGlobal();
   return (
-    <div className="app">
-      <Header />
-      <main>
-        <Routes>
-          <Route path="/" element={<RoleSelect />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/login" element={<Login />} />
+    <AuthProvider>
+      <NotificationProvider>
+        <AppointmentProvider>
+          <UINotificationsProvider>
+          <BrowserRouter>
+            <Shell>
+              <Routes>
+                <Route path="/" element={<Landing />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/signup" element={<Signup />} />
+                <Route path="/patient" element={<RequireRole role="patient"><PatientDashboard /></RequireRole>} />
+                <Route path="/doctor" element={<RequireRole role="doctor"><DoctorDashboard /></RequireRole>} />
+                <Route path="/search" element={<Search />} />
+                <Route path="/doctor/:id" element={<DoctorProfile />} />
+                <Route path="*" element={<Navigate to="/" replace />} />
+              </Routes>
+            </Shell>
+            <NotificationToast />
+          </BrowserRouter>
+          </UINotificationsProvider>
+        </AppointmentProvider>
+      </NotificationProvider>
+    </AuthProvider>
+  );
+}
 
-          {/* Doctor routes */}
-          <Route
-            path="/doctor/*"
-            element={
-              <PrivateRoute requiredRole="doctor">
-                <Routes>
-                  <Route path="" element={<DoctorDashboard />} />
-                  <Route path="clinic/:id" element={<ClinicDetails />} />
-                </Routes>
-              </PrivateRoute>
-            }
-          />
-
-          {/* Patient routes */}
-          <Route
-            path="/patient/*"
-            element={
-              <PrivateRoute requiredRole="patient">
-                <Routes>
-                  <Route path="" element={<PatientDashboard />} />
-                </Routes>
-              </PrivateRoute>
-            }
-          />
-
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </main>
+function Shell({ children }) {
+  const { user, logout } = useAuth();
+  const location = useLocation();
+  const isHome = location.pathname === '/';
+  React.useEffect(() => {
+    const p = location.pathname;
+    if (p.startsWith('/patient')) {
+      try { window.notify({ title: 'Welcome back', message: 'Patient dashboard loaded.', type: 'info' }); } catch {}
+    }
+    if (p.startsWith('/doctor')) {
+      try { window.notify({ title: 'Welcome back', message: 'Doctor dashboard loaded.', type: 'info' }); } catch {}
+    }
+  }, [location.pathname]);
+  return (
+    <div>
+      <header className="header">
+        <div className="brand">
+          <img src="/src/assets/logo.svg" alt="Medicare logo" />
+          <Link className="link name" to={"/"}>Medicare</Link>
+        </div>
+        <nav className="nav">
+          {isHome ? (
+            <>
+              <Link className="link" to={"/login"}>Sign in</Link>
+              <Link className="btn" to={"/signup"}>Get Started</Link>
+            </>
+          ) : (
+            <>
+              <Link className="link" to={"/search"}>Find Doctors</Link>
+              <UINotificationBell />
+              {user ? (
+                <>
+                  <Link className="link" to={user.role === 'patient' ? '/patient' : '/doctor'}>Dashboard</Link>
+                  <button className="btn ghost" onClick={logout}>Logout</button>
+                </>
+              ) : (
+                <>
+                  <Link className="link" to={"/login"}>Sign In</Link>
+                  <Link className="btn" to={"/signup"}>Create Account</Link>
+                </>
+              )}
+            </>
+          )}
+        </nav>
+      </header>
+      <main className="container">{children}</main>
+      <footer className="footer">© {new Date().getFullYear()} Medicare</footer>
     </div>
   );
+}
+
+function RequireRole({ role, children }) {
+  const { user } = useAuth();
+  if (!user) return <Navigate to="/login" replace />;
+  if (user.role !== role) return <Navigate to={role === 'patient' ? '/patient' : '/doctor'} replace />;
+  return children;
 }

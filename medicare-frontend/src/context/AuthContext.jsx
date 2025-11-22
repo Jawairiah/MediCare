@@ -1,76 +1,53 @@
-import React, { createContext, useState, useEffect } from "react";
-import api from "../services/api";
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 
-/**
- * AuthContext handles:
- * - storing tokens (localStorage for now)
- * - current user info
- * - login/logout/register helpers
- *
- * NOTE: For production prefer HTTP-only cookies for refresh tokens.
- */
-
-export const AuthContext = createContext();
+const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(() => {
-    // load user from localStorage if exists
-    const u = localStorage.getItem("mc_user");
-    return u ? JSON.parse(u) : null;
-  });
-  const [access, setAccess] = useState(() => localStorage.getItem("mc_access") || null);
-  const [refresh, setRefresh] = useState(() => localStorage.getItem("mc_refresh") || null);
+  const [selectedRole, setSelectedRole] = useState(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [user, setUser] = useState(null);
 
   useEffect(() => {
-    // Attach token into api default header
-    if (access) {
-      api.defaults.headers.common["Authorization"] = `Bearer ${access}`;
-      localStorage.setItem("mc_access", access);
-    } else {
-      delete api.defaults.headers.common["Authorization"];
-      localStorage.removeItem("mc_access");
-    }
-    if (refresh) localStorage.setItem("mc_refresh", refresh);
-    else localStorage.removeItem("mc_refresh");
-    if (user) localStorage.setItem("mc_user", JSON.stringify(user));
-    else localStorage.removeItem("mc_user");
-  }, [access, refresh, user]);
+    const persistedRole = localStorage.getItem('medicare_role');
+    const persistedAuth = localStorage.getItem('medicare_auth');
+    if (persistedRole) setSelectedRole(persistedRole);
+    if (persistedAuth === 'true') setIsAuthenticated(true);
+  }, []);
 
-  const login = async ({ email, password, role }) => {
-    // backend expects role + email + password on login
-    const res = await api.post("/api/auth/login/", { email, password, role });
-    const { access: at, refresh: rt, user: u } = res.data;
-    setAccess(at);
-    setRefresh(rt);
-    setUser(u);
-    return res.data;
+  const selectRole = (role) => {
+    setSelectedRole(role);
+    localStorage.setItem('medicare_role', role);
   };
 
-  const register = async (payload) => {
-    const res = await api.post("/api/auth/register/", payload);
-    return res.data;
+  const login = async ({ email, password }) => {
+    // Placeholder: integrate backend auth here.
+    // On success, set user info and mark authenticated.
+    setUser({ email });
+    setIsAuthenticated(true);
+    localStorage.setItem('medicare_auth', 'true');
+    return { ok: true };
   };
 
   const logout = () => {
+    setIsAuthenticated(false);
     setUser(null);
-    setAccess(null);
-    setRefresh(null);
-    localStorage.removeItem("mc_user");
-    localStorage.removeItem("mc_access");
-    localStorage.removeItem("mc_refresh");
+    localStorage.removeItem('medicare_auth');
   };
 
-  const value = {
+  const value = useMemo(() => ({
+    selectedRole,
+    isAuthenticated,
     user,
-    access,
-    refresh,
+    selectRole,
     login,
-    register,
     logout,
-    setAccess,
-    setRefresh,
-    setUser,
-  };
+  }), [selectedRole, isAuthenticated, user]);
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
+  );
+}
+
+export function useAuth() {
+  return useContext(AuthContext);
 }

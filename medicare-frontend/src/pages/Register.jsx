@@ -1,58 +1,76 @@
+import React, { useState } from 'react';
+import { UserCircle, Stethoscope, Mail, Lock, User, Phone, Calendar, MapPin } from 'lucide-react';
 
-// ================================
-// medicare-frontend/src/pages/Register.jsx
-// COMPLETE REGISTER PAGE - Copy this entire file
-// ================================
-
-import React, { useState, useContext } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
-import { AuthContext } from "../context/AuthContext";
-
-export default function Register() {
-  const { state } = useLocation();
-  const roleFromState = state?.role || "patient";
-  const [role, setRole] = useState(roleFromState);
+export default function EnhancedRegister() {
+  // Get role from route state (passed from RoleSelect page)
+  const urlParams = new URLSearchParams(window.location.search);
+  const preSelectedRole = urlParams.get('role') || 'patient';
+  
   const [form, setForm] = useState({
-    email: "",
-    password: "",
-    first_name: "",
-    last_name: "",
+    email: '',
+    password: '',
+    confirmPassword: '',
+    first_name: '',
+    last_name: '',
     // doctor fields
-    specialization: "",
-    qualification: "",
-    experience_years: "",
-    clinic_id: "",
+    specialization: '',
+    qualification: '',
+    experience_years: '',
     // patient fields
-    phone: "",
-    date_of_birth: "",
-    gender: "",
-    address: "",
+    phone: '',
+    date_of_birth: '',
+    gender: '',
+    address: '',
   });
+  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const { register } = useContext(AuthContext);
-  const nav = useNavigate();
+  const [passwordMatch, setPasswordMatch] = useState(true);
 
-  const onChange = (e) => setForm({ ...form, [e.target.name]: e.target.value });
+  const role = preSelectedRole; // Role is fixed from route
+
+  const onChange = (e) => {
+    const { name, value } = e.target;
+    setForm({ ...form, [name]: value });
+    
+    // Check password match
+    if (name === 'confirmPassword' || name === 'password') {
+      setPasswordMatch(
+        name === 'confirmPassword' 
+          ? value === form.password 
+          : form.confirmPassword === value || form.confirmPassword === ''
+      );
+    }
+  };
 
   const submit = async (e) => {
     e.preventDefault();
+    
+    if (form.password !== form.confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    if (form.password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
-    const payload = { 
-      role, 
-      email: form.email, 
-      password: form.password, 
-      first_name: form.first_name, 
-      last_name: form.last_name 
+    const payload = {
+      role,
+      email: form.email,
+      password: form.password,
+      first_name: form.first_name,
+      last_name: form.last_name
     };
-    
-    if (role === "doctor") {
+
+    if (role === 'doctor') {
       payload.specialization = form.specialization;
       payload.qualification = form.qualification;
       payload.experience_years = Number(form.experience_years) || 0;
-      if (form.clinic_id) payload.clinic_id = Number(form.clinic_id);
     } else {
       payload.phone = form.phone;
       payload.date_of_birth = form.date_of_birth || null;
@@ -61,12 +79,14 @@ export default function Register() {
     }
 
     try {
-      await register(payload);
-      alert("✅ Registration successful! Please login with your credentials.");
-      nav("/login");
+      // API call would go here
+      console.log('Registering:', payload);
+      setTimeout(() => {
+        alert('✅ Registration successful! Please login with your credentials.');
+        window.location.href = '/login';
+      }, 1000);
     } catch (err) {
-      console.error("Registration error:", err);
-      setError(err.response?.data || "Registration failed. Please try again.");
+      setError(err.message || 'Registration failed. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -75,346 +95,518 @@ export default function Register() {
   return (
     <div style={{
       background: 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
-      minHeight: 'calc(100vh - 100px)',
+      minHeight: '100vh',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
-      padding: '2rem'
+      padding: '2rem',
+      position: 'relative',
+      overflow: 'hidden'
     }}>
-      <div className="card" style={{ maxWidth: '550px', width: '100%' }}>
-        <div style={{ textAlign: 'center', marginBottom: '2rem' }}>
-          <div style={{ fontSize: '3rem', marginBottom: '1rem' }}>🏥</div>
-          <h2 style={{ 
-            fontSize: '2rem', 
-            color: '#1f2937', 
-            marginBottom: '0.5rem' 
+      {/* Background decoration */}
+      <div style={{
+        position: 'absolute',
+        top: '-10%',
+        right: '-10%',
+        width: '500px',
+        height: '500px',
+        background: 'rgba(255, 255, 255, 0.1)',
+        borderRadius: '50%',
+        filter: 'blur(80px)'
+      }} />
+
+      <div style={{
+        background: 'white',
+        borderRadius: '24px',
+        boxShadow: '0 20px 60px rgba(0,0,0,0.3)',
+        maxWidth: '600px',
+        width: '100%',
+        overflow: 'hidden',
+        position: 'relative',
+        zIndex: 1
+      }}>
+        {/* Header with Role Badge */}
+        <div style={{
+          background: role === 'doctor' 
+            ? 'linear-gradient(135deg, #10b981 0%, #059669 100%)'
+            : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+          padding: '3rem 2rem 2rem',
+          textAlign: 'center',
+          color: 'white'
+        }}>
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            background: 'rgba(255, 255, 255, 0.2)',
+            padding: '0.75rem 1.5rem',
+            borderRadius: '50px',
+            marginBottom: '1rem',
+            backdropFilter: 'blur(10px)'
           }}>
-            Create Account
+            {role === 'doctor' ? (
+              <Stethoscope className="w-6 h-6" />
+            ) : (
+              <UserCircle className="w-6 h-6" />
+            )}
+            <span style={{ fontWeight: '600', fontSize: '1.1rem' }}>
+              {role === 'doctor' ? 'Doctor' : 'Patient'} Registration
+            </span>
+          </div>
+          
+          <h2 style={{
+            fontSize: '2rem',
+            fontWeight: '800',
+            marginBottom: '0.5rem'
+          }}>
+            Create Your Account
           </h2>
-          <p style={{ color: '#6b7280' }}>Join Medicare today</p>
+          <p style={{ opacity: 0.9, fontSize: '1rem' }}>
+            Join Medicare and start your healthcare journey
+          </p>
         </div>
 
-        <div style={{ marginBottom: '1.5rem' }}>
-          <label style={{ 
-            display: 'block', 
-            marginBottom: '0.75rem', 
-            fontWeight: '600', 
-            color: '#374151' 
-          }}>
-            Register as
-          </label>
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: '1fr 1fr', 
-            gap: '1rem' 
-          }}>
-            <div
-              onClick={() => setRole("patient")}
-              style={{
-                padding: '1.25rem',
-                border: `2px solid ${role === "patient" ? '#667eea' : '#e5e7eb'}`,
-                borderRadius: '10px',
-                cursor: 'pointer',
-                textAlign: 'center',
-                background: role === "patient" ? 'rgba(102, 126, 234, 0.05)' : 'white',
-                transition: 'all 0.3s'
-              }}
-            >
-              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>🧑‍💼</div>
-              <div style={{ 
-                fontWeight: '600', 
-                color: role === "patient" ? '#667eea' : '#374151' 
-              }}>
-                Patient
+        {/* Form */}
+        <div style={{ padding: '2rem' }}>
+          {error && (
+            <div style={{
+              background: '#fee2e2',
+              color: '#991b1b',
+              padding: '1rem',
+              borderRadius: '12px',
+              marginBottom: '1.5rem',
+              border: '1px solid #fecaca',
+              fontSize: '0.9rem',
+              fontWeight: '500'
+            }}>
+              {error}
+            </div>
+          )}
+
+          <form onSubmit={submit}>
+            {/* Name Fields */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '1rem',
+              marginBottom: '1rem'
+            }}>
+              <div>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '0.5rem',
+                  fontWeight: '600',
+                  color: '#374151',
+                  fontSize: '0.9rem'
+                }}>
+                  <User className="w-4 h-4 inline mr-2" />
+                  First Name *
+                </label>
+                <input
+                  name="first_name"
+                  placeholder="John"
+                  value={form.first_name}
+                  onChange={onChange}
+                  required
+                  style={{
+                    width: '100%',
+                    padding: '0.875rem',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '12px',
+                    fontSize: '1rem',
+                    transition: 'all 0.3s'
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '0.5rem',
+                  fontWeight: '600',
+                  color: '#374151',
+                  fontSize: '0.9rem'
+                }}>
+                  Last Name *
+                </label>
+                <input
+                  name="last_name"
+                  placeholder="Doe"
+                  value={form.last_name}
+                  onChange={onChange}
+                  required
+                  style={{
+                    width: '100%',
+                    padding: '0.875rem',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '12px',
+                    fontSize: '1rem'
+                  }}
+                />
               </div>
             </div>
-            <div
-              onClick={() => setRole("doctor")}
-              style={{
-                padding: '1.25rem',
-                border: `2px solid ${role === "doctor" ? '#667eea' : '#e5e7eb'}`,
-                borderRadius: '10px',
-                cursor: 'pointer',
-                textAlign: 'center',
-                background: role === "doctor" ? 'rgba(102, 126, 234, 0.05)' : 'white',
-                transition: 'all 0.3s'
-              }}
-            >
-              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>👨‍⚕️</div>
-              <div style={{ 
-                fontWeight: '600', 
-                color: role === "doctor" ? '#667eea' : '#374151' 
+
+            {/* Email */}
+            <div style={{ marginBottom: '1rem' }}>
+              <label style={{
+                display: 'block',
+                marginBottom: '0.5rem',
+                fontWeight: '600',
+                color: '#374151',
+                fontSize: '0.9rem'
               }}>
-                Doctor
+                <Mail className="w-4 h-4 inline mr-2" />
+                Email Address *
+              </label>
+              <input
+                name="email"
+                type="email"
+                placeholder="your@email.com"
+                value={form.email}
+                onChange={onChange}
+                required
+                style={{
+                  width: '100%',
+                  padding: '0.875rem',
+                  border: '2px solid #e5e7eb',
+                  borderRadius: '12px',
+                  fontSize: '1rem'
+                }}
+              />
+            </div>
+
+            {/* Password Fields */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '1rem',
+              marginBottom: '1rem'
+            }}>
+              <div>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '0.5rem',
+                  fontWeight: '600',
+                  color: '#374151',
+                  fontSize: '0.9rem'
+                }}>
+                  <Lock className="w-4 h-4 inline mr-2" />
+                  Password *
+                </label>
+                <input
+                  type="password"
+                  name="password"
+                  placeholder="••••••••"
+                  value={form.password}
+                  onChange={onChange}
+                  required
+                  minLength={6}
+                  style={{
+                    width: '100%',
+                    padding: '0.875rem',
+                    border: '2px solid #e5e7eb',
+                    borderRadius: '12px',
+                    fontSize: '1rem'
+                  }}
+                />
+              </div>
+              <div>
+                <label style={{
+                  display: 'block',
+                  marginBottom: '0.5rem',
+                  fontWeight: '600',
+                  color: '#374151',
+                  fontSize: '0.9rem'
+                }}>
+                  Confirm Password *
+                </label>
+                <input
+                  type="password"
+                  name="confirmPassword"
+                  placeholder="••••••••"
+                  value={form.confirmPassword}
+                  onChange={onChange}
+                  required
+                  style={{
+                    width: '100%',
+                    padding: '0.875rem',
+                    border: `2px solid ${passwordMatch ? '#e5e7eb' : '#ef4444'}`,
+                    borderRadius: '12px',
+                    fontSize: '1rem'
+                  }}
+                />
               </div>
             </div>
-          </div>
-        </div>
-
-        <form onSubmit={submit}>
-          <div style={{ 
-            display: 'grid', 
-            gridTemplateColumns: '1fr 1fr', 
-            gap: '1rem' 
-          }}>
-            <div>
-              <label style={{ 
-                display: 'block', 
-                marginBottom: '0.5rem', 
-                fontWeight: '600', 
-                color: '#374151', 
-                fontSize: '0.9rem' 
+            {!passwordMatch && (
+              <p style={{
+                color: '#ef4444',
+                fontSize: '0.85rem',
+                marginTop: '-0.5rem',
+                marginBottom: '1rem'
               }}>
-                First Name *
-              </label>
-              <input 
-                name="first_name" 
-                placeholder="John" 
-                value={form.first_name} 
-                onChange={onChange}
-                required
-              />
-            </div>
-            <div>
-              <label style={{ 
-                display: 'block', 
-                marginBottom: '0.5rem', 
-                fontWeight: '600', 
-                color: '#374151', 
-                fontSize: '0.9rem' 
-              }}>
-                Last Name *
-              </label>
-              <input 
-                name="last_name" 
-                placeholder="Doe" 
-                value={form.last_name} 
-                onChange={onChange}
-                required
-              />
-            </div>
-          </div>
+                Passwords do not match
+              </p>
+            )}
 
-          <label style={{ 
-            display: 'block', 
-            marginTop: '1rem', 
-            marginBottom: '0.5rem', 
-            fontWeight: '600', 
-            color: '#374151', 
-            fontSize: '0.9rem' 
-          }}>
-            Email *
-          </label>
-          <input 
-            name="email" 
-            type="email"
-            placeholder="your@email.com" 
-            value={form.email} 
-            onChange={onChange}
-            required
-          />
-
-          <label style={{ 
-            display: 'block', 
-            marginTop: '1rem', 
-            marginBottom: '0.5rem', 
-            fontWeight: '600', 
-            color: '#374151', 
-            fontSize: '0.9rem' 
-          }}>
-            Password * (minimum 6 characters)
-          </label>
-          <input 
-            type="password" 
-            name="password" 
-            placeholder="••••••••" 
-            value={form.password} 
-            onChange={onChange}
-            required
-            minLength={6}
-          />
-
-          {role === "doctor" ? (
-            <>
-              <label style={{ 
-                display: 'block', 
-                marginTop: '1rem', 
-                marginBottom: '0.5rem', 
-                fontWeight: '600', 
-                color: '#374151', 
-                fontSize: '0.9rem' 
-              }}>
-                Specialization
-              </label>
-              <input 
-                name="specialization" 
-                placeholder="e.g., Cardiologist" 
-                value={form.specialization} 
-                onChange={onChange}
-              />
-
-              <label style={{ 
-                display: 'block', 
-                marginTop: '1rem', 
-                marginBottom: '0.5rem', 
-                fontWeight: '600', 
-                color: '#374151', 
-                fontSize: '0.9rem' 
-              }}>
-                Qualification
-              </label>
-              <input 
-                name="qualification" 
-                placeholder="e.g., MBBS, MD" 
-                value={form.qualification} 
-                onChange={onChange}
-              />
-
-              <label style={{ 
-                display: 'block', 
-                marginTop: '1rem', 
-                marginBottom: '0.5rem', 
-                fontWeight: '600', 
-                color: '#374151', 
-                fontSize: '0.9rem' 
-              }}>
-                Years of Experience
-              </label>
-              <input 
-                name="experience_years" 
-                type="number"
-                placeholder="5" 
-                value={form.experience_years} 
-                onChange={onChange}
-                min="0"
-              />
-            </>
-          ) : (
-            <>
-              <label style={{ 
-                display: 'block', 
-                marginTop: '1rem', 
-                marginBottom: '0.5rem', 
-                fontWeight: '600', 
-                color: '#374151', 
-                fontSize: '0.9rem' 
-              }}>
-                Phone
-              </label>
-              <input 
-                name="phone" 
-                type="tel"
-                placeholder="+92 300 1234567" 
-                value={form.phone} 
-                onChange={onChange}
-              />
-
-              <div style={{ 
-                display: 'grid', 
-                gridTemplateColumns: '1fr 1fr', 
-                gap: '1rem', 
-                marginTop: '1rem' 
-              }}>
-                <div>
-                  <label style={{ 
-                    display: 'block', 
-                    marginBottom: '0.5rem', 
-                    fontWeight: '600', 
-                    color: '#374151', 
-                    fontSize: '0.9rem' 
+            {/* Role-specific fields */}
+            {role === 'doctor' ? (
+              <>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{
+                    display: 'block',
+                    marginBottom: '0.5rem',
+                    fontWeight: '600',
+                    color: '#374151',
+                    fontSize: '0.9rem'
                   }}>
-                    Date of Birth
+                    <Stethoscope className="w-4 h-4 inline mr-2" />
+                    Specialization
                   </label>
-                  <input 
-                    name="date_of_birth" 
-                    type="date" 
-                    value={form.date_of_birth} 
+                  <input
+                    name="specialization"
+                    placeholder="e.g., Cardiologist, Pediatrician"
+                    value={form.specialization}
                     onChange={onChange}
-                    max={new Date().toISOString().split('T')[0]}
+                    style={{
+                      width: '100%',
+                      padding: '0.875rem',
+                      border: '2px solid #e5e7eb',
+                      borderRadius: '12px',
+                      fontSize: '1rem'
+                    }}
                   />
                 </div>
-                <div>
-                  <label style={{ 
-                    display: 'block', 
-                    marginBottom: '0.5rem', 
-                    fontWeight: '600', 
-                    color: '#374151', 
-                    fontSize: '0.9rem' 
-                  }}>
-                    Gender
-                  </label>
-                  <select 
-                    name="gender" 
-                    value={form.gender} 
-                    onChange={onChange}
-                  >
-                    <option value="">Select...</option>
-                    <option value="Male">Male</option>
-                    <option value="Female">Female</option>
-                    <option value="Other">Other</option>
-                  </select>
+
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '1rem',
+                  marginBottom: '1rem'
+                }}>
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      marginBottom: '0.5rem',
+                      fontWeight: '600',
+                      color: '#374151',
+                      fontSize: '0.9rem'
+                    }}>
+                      Qualification
+                    </label>
+                    <input
+                      name="qualification"
+                      placeholder="MBBS, MD"
+                      value={form.qualification}
+                      onChange={onChange}
+                      style={{
+                        width: '100%',
+                        padding: '0.875rem',
+                        border: '2px solid #e5e7eb',
+                        borderRadius: '12px',
+                        fontSize: '1rem'
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      marginBottom: '0.5rem',
+                      fontWeight: '600',
+                      color: '#374151',
+                      fontSize: '0.9rem'
+                    }}>
+                      Experience (years)
+                    </label>
+                    <input
+                      name="experience_years"
+                      type="number"
+                      placeholder="5"
+                      value={form.experience_years}
+                      onChange={onChange}
+                      min="0"
+                      style={{
+                        width: '100%',
+                        padding: '0.875rem',
+                        border: '2px solid #e5e7eb',
+                        borderRadius: '12px',
+                        fontSize: '1rem'
+                      }}
+                    />
+                  </div>
                 </div>
-              </div>
+              </>
+            ) : (
+              <>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{
+                    display: 'block',
+                    marginBottom: '0.5rem',
+                    fontWeight: '600',
+                    color: '#374151',
+                    fontSize: '0.9rem'
+                  }}>
+                    <Phone className="w-4 h-4 inline mr-2" />
+                    Phone Number
+                  </label>
+                  <input
+                    name="phone"
+                    type="tel"
+                    placeholder="+92 300 1234567"
+                    value={form.phone}
+                    onChange={onChange}
+                    style={{
+                      width: '100%',
+                      padding: '0.875rem',
+                      border: '2px solid #e5e7eb',
+                      borderRadius: '12px',
+                      fontSize: '1rem'
+                    }}
+                  />
+                </div>
 
-              <label style={{ 
-                display: 'block', 
-                marginTop: '1rem', 
-                marginBottom: '0.5rem', 
-                fontWeight: '600', 
-                color: '#374151', 
-                fontSize: '0.9rem' 
-              }}>
-                Address
-              </label>
-              <textarea 
-                name="address" 
-                placeholder="Your address" 
-                value={form.address} 
-                onChange={onChange}
-                rows="2"
-                style={{ resize: 'vertical' }}
-              />
-            </>
-          )}
+                <div style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr',
+                  gap: '1rem',
+                  marginBottom: '1rem'
+                }}>
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      marginBottom: '0.5rem',
+                      fontWeight: '600',
+                      color: '#374151',
+                      fontSize: '0.9rem'
+                    }}>
+                      <Calendar className="w-4 h-4 inline mr-2" />
+                      Date of Birth
+                    </label>
+                    <input
+                      name="date_of_birth"
+                      type="date"
+                      value={form.date_of_birth}
+                      onChange={onChange}
+                      max={new Date().toISOString().split('T')[0]}
+                      style={{
+                        width: '100%',
+                        padding: '0.875rem',
+                        border: '2px solid #e5e7eb',
+                        borderRadius: '12px',
+                        fontSize: '1rem'
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{
+                      display: 'block',
+                      marginBottom: '0.5rem',
+                      fontWeight: '600',
+                      color: '#374151',
+                      fontSize: '0.9rem'
+                    }}>
+                      Gender
+                    </label>
+                    <select
+                      name="gender"
+                      value={form.gender}
+                      onChange={onChange}
+                      style={{
+                        width: '100%',
+                        padding: '0.875rem',
+                        border: '2px solid #e5e7eb',
+                        borderRadius: '12px',
+                        fontSize: '1rem',
+                        background: 'white'
+                      }}
+                    >
+                      <option value="">Select...</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Other">Other</option>
+                    </select>
+                  </div>
+                </div>
 
-          <button 
-            type="submit" 
-            disabled={loading}
-            style={{ 
-              marginTop: '1.5rem', 
-              opacity: loading ? 0.7 : 1 
-            }}
-          >
-            {loading ? "Creating account..." : "Create Account"}
-          </button>
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{
+                    display: 'block',
+                    marginBottom: '0.5rem',
+                    fontWeight: '600',
+                    color: '#374151',
+                    fontSize: '0.9rem'
+                  }}>
+                    <MapPin className="w-4 h-4 inline mr-2" />
+                    Address
+                  </label>
+                  <textarea
+                    name="address"
+                    placeholder="Your address"
+                    value={form.address}
+                    onChange={onChange}
+                    rows="2"
+                    style={{
+                      width: '100%',
+                      padding: '0.875rem',
+                      border: '2px solid #e5e7eb',
+                      borderRadius: '12px',
+                      fontSize: '1rem',
+                      resize: 'vertical',
+                      fontFamily: 'inherit'
+                    }}
+                  />
+                </div>
+              </>
+            )}
 
-          {error && (
-            <div className="error" style={{ marginTop: '1rem' }}>
-              {typeof error === 'string' ? error : JSON.stringify(error)}
-            </div>
-          )}
-        </form>
-
-        <div style={{ 
-          marginTop: '1.5rem', 
-          paddingTop: '1.5rem', 
-          borderTop: '1px solid #e5e7eb',
-          textAlign: 'center'
-        }}>
-          <p style={{ color: '#6b7280' }}>
-            Already have an account?{' '}
-            <a 
-              onClick={() => nav('/login')} 
-              style={{ 
-                color: '#667eea', 
-                fontWeight: '600', 
-                cursor: 'pointer',
-                textDecoration: 'underline'
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={loading || !passwordMatch}
+              style={{
+                width: '100%',
+                padding: '1rem',
+                background: loading || !passwordMatch 
+                  ? '#9ca3af' 
+                  : 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                color: 'white',
+                border: 'none',
+                borderRadius: '12px',
+                fontSize: '1.1rem',
+                fontWeight: '700',
+                cursor: loading || !passwordMatch ? 'not-allowed' : 'pointer',
+                transition: 'all 0.3s',
+                boxShadow: loading || !passwordMatch 
+                  ? 'none' 
+                  : '0 4px 15px rgba(102, 126, 234, 0.4)',
+                marginTop: '1rem'
               }}
             >
-              Sign In
-            </a>
-          </p>
+              {loading ? '🔄 Creating Account...' : '✨ Create Account'}
+            </button>
+          </form>
+
+          {/* Login Link */}
+          <div style={{
+            marginTop: '2rem',
+            paddingTop: '2rem',
+            borderTop: '1px solid #e5e7eb',
+            textAlign: 'center'
+          }}>
+            <p style={{ color: '#6b7280', fontSize: '0.95rem' }}>
+              Already have an account?{' '}
+              <a
+                href="/login"
+                style={{
+                  color: '#667eea',
+                  fontWeight: '600',
+                  textDecoration: 'none',
+                  borderBottom: '2px solid transparent',
+                  transition: 'border-color 0.3s'
+                }}
+              >
+                Sign In →
+              </a>
+            </p>
+          </div>
         </div>
       </div>
     </div>
