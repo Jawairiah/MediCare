@@ -17,6 +17,7 @@ import DoctorDashboard from './pages/DoctorDashboard.jsx';
 import Search from './pages/Search.jsx';
 import DoctorProfile from './pages/DoctorProfile.jsx';
 import Landing from './pages/Landing.jsx';
+import AuthPortal from './pages/AuthPortal.jsx';
 import { initNotifyGlobal } from './utils/notify.js';
 
 export default function App() {
@@ -32,6 +33,7 @@ export default function App() {
                 <Route path="/" element={<Landing />} />
                 <Route path="/login" element={<Login />} />
                 <Route path="/signup" element={<Signup />} />
+                <Route path="/auth" element={<AuthPortal />} />
                 <Route path="/patient" element={<RequireRole role="patient"><PatientDashboard /></RequireRole>} />
                 <Route path="/doctor" element={<RequireRole role="doctor"><DoctorDashboard /></RequireRole>} />
                 <Route path="/search" element={<Search />} />
@@ -71,15 +73,21 @@ function Shell({ children }) {
         <nav className="nav">
           {isHome ? (
             <>
-              <Link className="link" to={"/login"}>Sign in</Link>
-              <Link className="btn" to={"/signup"}>Get Started</Link>
+              <Link className="link" to={"/auth?tab=login"}>Sign in</Link>
+              <Link className="btn" to={"/auth?tab=signup"}>Get Started</Link>
             </>
           ) : (
             <>
-              <Link className="link" to={"/search"}>Find Doctors</Link>
-              <UINotificationBell />
+              {user && user.email && ( // notifications only when signed in
+                <UINotificationBell />
+              )}
               {user ? (
                 <>
+                  {/* Find Doctors visible only for patients */}
+                  { /* selectedRole is used for role tracking in auth context */ }
+                  { (window?.localStorage?.getItem('medicare_role') === 'patient') && (
+                    <Link className="link" to={"/search"}>Find Doctors</Link>
+                  )}
                   <Link className="link" to={user.role === 'patient' ? '/patient' : '/doctor'}>Dashboard</Link>
                   <button className="btn ghost" onClick={logout}>Logout</button>
                 </>

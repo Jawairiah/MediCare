@@ -11,15 +11,23 @@ export default function DoctorProfile() {
   const doctor = useMemo(() => doctors.find(d => d.id === Number(id)), [doctors, id]);
 
   const [date, setDate] = useState(() => new Date().toISOString().slice(0,10));
-  const slots = getSlotsForDate(id, date);
+  const [slots, setSlots] = useState([]);
 
-  const onBook = (start) => {
+  // load slots from backend or fallback
+  React.useEffect(() => {
+    (async () => {
+      const s = await getSlotsForDate(id, date);
+      setSlots(s);
+    })();
+  }, [id, date, getSlotsForDate]);
+
+  const onBook = async (start) => {
     if (!isAuthenticated || selectedRole !== 'patient') {
       navigate('/login');
       return;
     }
-    const res = bookAppointment(id, date, start);
-    if (res.ok) navigate('/dashboard/patient');
+    const res = await bookAppointment(id, date, start);
+    if (res.ok) navigate('/patient');
   };
 
   if (!doctor) return <div className="card">Doctor not found.</div>;

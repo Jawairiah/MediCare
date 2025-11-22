@@ -13,8 +13,8 @@ export default function Landing(){
           </h1>
           <p className="subtitle">Book, manage, and track your medical appointments with ease. Connect with top doctors and take control of your healthcare journey.</p>
           <div className="cta">
-            <Link to="/search" className="btn">Book an Appointment</Link>
-            <Link to="/signup" className="btn outline">Join as Doctor</Link>
+            <Link to="/auth?role=patient&tab=signup" className="btn">Book an Appointment</Link>
+            <Link to="/auth?role=doctor&tab=signup" className="btn outline">Join as Doctor</Link>
           </div>
         </div>
         <div className="hero-visual">

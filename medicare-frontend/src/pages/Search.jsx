@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAppointments } from '../context/AppointmentContext';
 
@@ -6,7 +6,14 @@ export default function Search() {
   const { searchDoctors } = useAppointments();
   const [specialty, setSpecialty] = useState('');
   const [location, setLocation] = useState('');
-  const results = searchDoctors({ specialty, location });
+  const [results, setResults] = useState([]);
+
+  useEffect(() => {
+    (async () => {
+      const r = await searchDoctors({ specialty, location });
+      setResults(r || []);
+    })();
+  }, [specialty, location, searchDoctors]);
 
   return (
     <div className="card stack">

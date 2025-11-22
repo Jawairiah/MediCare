@@ -14,7 +14,7 @@ export default function Login() {
     const res = await login({ email, password });
     if (res?.ok) {
       const role = selectedRole || 'patient';
-      navigate(role === 'doctor' ? '/dashboard/doctor' : '/dashboard/patient');
+      navigate(role === 'doctor' ? '/doctor' : '/patient');
     } else {
       setError('Invalid credentials');
     }
