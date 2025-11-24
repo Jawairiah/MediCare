@@ -1,3 +1,4 @@
+// medicare-frontend/src/pages/Signup.jsx
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -5,52 +6,97 @@ import { useAuth } from '../context/AuthContext';
 export default function Signup() {
   const { selectedRole, signup } = useAuth();
   const navigate = useNavigate();
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  // Patient profile fields
-  const [dateOfBirth, setDateOfBirth] = useState('');
-  const [gender, setGender] = useState('');
-  const [phone, setPhone] = useState('');
-  const [address, setAddress] = useState('');
-  // Doctor profile fields
-  const [clinicName, setClinicName] = useState('');
-  const [specialization, setSpecialization] = useState('');
-  const [qualification, setQualification] = useState('');
-  const [experienceYears, setExperienceYears] = useState('');
-  const [consultationFee, setConsultationFee] = useState('');
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // Role is selected in AuthPortal; if not, we allow default UI to proceed.
+  // Form state
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    // Patient fields
+    dateOfBirth: '',
+    gender: '',
+    phone: '',
+    address: '',
+    // Doctor fields
+    specialization: '',
+    qualification: '',
+    experienceYears: '',
+    consultationFee: '',
+  });
+
+  const handleChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value,
+    });
+    setError(null);
+  };
 
   const onSubmit = async (e) => {
     e.preventDefault();
+    setError(null);
+
+    // Validation
+    if (formData.password !== formData.confirmPassword) {
+      setError('Passwords do not match');
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      setError('Password must be at least 6 characters');
+      return;
+    }
+
     const role = selectedRole || 'patient';
+    
+    // Prepare payload
     const payload = {
-      name,
-      email,
-      password,
       role,
-      profile: role === 'patient'
-        ? {
-            date_of_birth: dateOfBirth,
-            gender,
-            phone,
-            address,
-          }
-        : {
-            clinic_name: clinicName,
-            specialization,
-            qualification,
-            experience_years: experienceYears ? Number(experienceYears) : undefined,
-            consultation_fee: consultationFee ? Number(consultationFee) : undefined,
-          },
+      name: formData.name,
+      email: formData.email,
+      password: formData.password,
+      profile: role === 'patient' ? {
+        date_of_birth: formData.dateOfBirth || null,
+        gender: formData.gender || '',
+        phone: formData.phone || '',
+        address: formData.address || '',
+      } : {
+        specialization: formData.specialization || '',
+        qualification: formData.qualification || '',
+        experience_years: formData.experienceYears ? parseInt(formData.experienceYears) : 0,
+        consultation_fee: formData.consultationFee ? parseFloat(formData.consultationFee) : null,
+      },
     };
-    const res = await signup(payload);
-    if (res?.ok) {
-      navigate('/login');
-    } else {
-      setError(res?.error || 'Signup failed');
+
+    setLoading(true);
+    
+    try {
+      const result = await signup(payload);
+      
+      if (result?.ok) {
+        // Show success message
+        try {
+          window.notify({
+            title: 'Account Created',
+            message: 'Please login with your credentials',
+            type: 'success',
+          });
+        } catch {}
+        
+        // Navigate to login
+        setTimeout(() => {
+          navigate('/login');
+        }, 1000);
+      } else {
+        setError(result?.error || 'Signup failed. Please try again.');
+      }
+    } catch (err) {
+      setError('An error occurred. Please try again.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -58,39 +104,161 @@ export default function Signup() {
     <div className="card stack">
       <h2 className="title">Sign Up</h2>
       <p className="subtitle">Create your {selectedRole || 'account'}</p>
-      {error && <div className="notif unread" style={{ borderColor: 'var(--danger)' }}>{error}</div>}
+      
+      {error && (
+        <div className="notif unread" style={{ borderColor: 'var(--danger)', marginBottom: '16px' }}>
+          {error}
+        </div>
+      )}
+      
       <form className="stack" onSubmit={onSubmit}>
-        <input className="input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Full Name" required />
-        <input className="input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email" required />
-        <input className="input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Password" required />
+        {/* Common fields */}
+        <input
+          className="input"
+          name="name"
+          value={formData.name}
+          onChange={handleChange}
+          placeholder="Full Name"
+          required
+          disabled={loading}
+        />
+        
+        <input
+          className="input"
+          type="email"
+          name="email"
+          value={formData.email}
+          onChange={handleChange}
+          placeholder="Email"
+          required
+          disabled={loading}
+        />
+        
+        <input
+          className="input"
+          type="password"
+          name="password"
+          value={formData.password}
+          onChange={handleChange}
+          placeholder="Password (min 6 characters)"
+          required
+          minLength={6}
+          disabled={loading}
+        />
+        
+        <input
+          className="input"
+          type="password"
+          name="confirmPassword"
+          value={formData.confirmPassword}
+          onChange={handleChange}
+          placeholder="Confirm Password"
+          required
+          disabled={loading}
+        />
 
+        {/* Patient-specific fields */}
         {selectedRole === 'patient' && (
           <div className="stack">
-            <label className="subtitle">Patient Profile</label>
-            <input className="input" type="date" value={dateOfBirth} onChange={(e) => setDateOfBirth(e.target.value)} placeholder="Date of Birth" required />
-            <select className="input" value={gender} onChange={(e) => setGender(e.target.value)} required>
-              <option value="" disabled>Gender</option>
+            <label className="subtitle">Patient Profile (Optional)</label>
+            
+            <input
+              className="input"
+              type="date"
+              name="dateOfBirth"
+              value={formData.dateOfBirth}
+              onChange={handleChange}
+              placeholder="Date of Birth"
+              disabled={loading}
+            />
+            
+            <select
+              className="input"
+              name="gender"
+              value={formData.gender}
+              onChange={handleChange}
+              disabled={loading}
+            >
+              <option value="">Select Gender</option>
               <option value="male">Male</option>
               <option value="female">Female</option>
               <option value="other">Other</option>
             </select>
-            <input className="input" type="tel" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="Phone" required />
-            <input className="input" value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Address" required />
+            
+            <input
+              className="input"
+              type="tel"
+              name="phone"
+              value={formData.phone}
+              onChange={handleChange}
+              placeholder="Phone Number"
+              disabled={loading}
+            />
+            
+            <input
+              className="input"
+              name="address"
+              value={formData.address}
+              onChange={handleChange}
+              placeholder="Address"
+              disabled={loading}
+            />
           </div>
         )}
 
+        {/* Doctor-specific fields */}
         {selectedRole === 'doctor' && (
           <div className="stack">
             <label className="subtitle">Doctor Profile</label>
-            <input className="input" value={clinicName} onChange={(e) => setClinicName(e.target.value)} placeholder="Clinic Name" required />
-            <input className="input" value={specialization} onChange={(e) => setSpecialization(e.target.value)} placeholder="Specialization" required />
-            <input className="input" value={qualification} onChange={(e) => setQualification(e.target.value)} placeholder="Qualification" required />
-            <input className="input" type="number" min="0" value={experienceYears} onChange={(e) => setExperienceYears(e.target.value)} placeholder="Experience Years" required />
-            <input className="input" type="number" min="0" step="0.01" value={consultationFee} onChange={(e) => setConsultationFee(e.target.value)} placeholder="Consultation Fee" required />
+            
+            <input
+              className="input"
+              name="specialization"
+              value={formData.specialization}
+              onChange={handleChange}
+              placeholder="Specialization (e.g., Cardiology)"
+              required
+              disabled={loading}
+            />
+            
+            <input
+              className="input"
+              name="qualification"
+              value={formData.qualification}
+              onChange={handleChange}
+              placeholder="Qualification (e.g., MBBS, MD)"
+              required
+              disabled={loading}
+            />
+            
+            <input
+              className="input"
+              type="number"
+              min="0"
+              name="experienceYears"
+              value={formData.experienceYears}
+              onChange={handleChange}
+              placeholder="Years of Experience"
+              disabled={loading}
+            />
+            
+            <input
+              className="input"
+              type="number"
+              min="0"
+              step="0.01"
+              name="consultationFee"
+              value={formData.consultationFee}
+              onChange={handleChange}
+              placeholder="Consultation Fee (optional)"
+              disabled={loading}
+            />
           </div>
         )}
 
-        <button className="btn" type="submit">Create Account</button>
+        <button className="btn" type="submit" disabled={loading}>
+          {loading ? 'Creating Account...' : 'Create Account'}
+        </button>
       </form>
     </div>
   );
