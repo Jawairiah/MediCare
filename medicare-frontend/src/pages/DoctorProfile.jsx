@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAppointments } from '../context/AppointmentContext';
 import { useAuth } from '../context/AuthContext';
@@ -14,7 +14,7 @@ export default function DoctorProfile() {
   const [slots, setSlots] = useState([]);
 
   // load slots from backend or fallback
-  React.useEffect(() => {
+  useEffect(() => {
     (async () => {
       const s = await getSlotsForDate(id, date);
       setSlots(s);
