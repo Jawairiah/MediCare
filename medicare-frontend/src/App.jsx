@@ -13,7 +13,7 @@ import RoleSelect from './pages/RoleSelect';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import PatientDashboard from './pages/PatientDashboard';
-import DoctorDashboard from './pages/doctor/DoctorDashboard.jsx';
+import DoctorDashboard from './pages/DoctorDashboard.jsx';
 import Search from './pages/Search.jsx';
 import DoctorProfile from './pages/DoctorProfile.jsx';
 import Landing from './pages/Landing.jsx';
