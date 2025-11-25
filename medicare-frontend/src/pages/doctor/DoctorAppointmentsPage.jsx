@@ -1,5 +1,5 @@
 // medicare-frontend/src/pages/doctor/DoctorAppointmentsPage.jsx
-
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import * as api from '../../lib/api';
 
@@ -9,6 +9,7 @@ export default function DoctorAppointmentsPage() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     loadAppointments();
@@ -17,13 +18,17 @@ export default function DoctorAppointmentsPage() {
   const loadAppointments = async () => {
     try {
       setLoading(true);
+      setError(null);
       const response = await api.getDoctorAppointments();
 
       if (response.ok) {
         setAppointments(response.data || []);
+      } else {
+        setError(response.error || 'Failed to load appointments');
       }
     } catch (err) {
       console.error('Failed to load appointments:', err);
+      setError('Failed to load appointments');
     } finally {
       setLoading(false);
     }
@@ -32,8 +37,8 @@ export default function DoctorAppointmentsPage() {
   const filteredAppointments = appointments.filter(appt => {
     const matchesFilter = filter === 'all' || appt.status === filter;
     const matchesSearch = !searchTerm || 
-      appt.patient_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      appt.clinic_name.toLowerCase().includes(searchTerm.toLowerCase());
+      (appt.patient_name && appt.patient_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (appt.clinic_name && appt.clinic_name.toLowerCase().includes(searchTerm.toLowerCase()));
     
     return matchesFilter && matchesSearch;
   });
@@ -69,6 +74,23 @@ export default function DoctorAppointmentsPage() {
           </button>
         </div>
       </div>
+
+      {error && (
+        <div className="card" style={{ 
+          marginBottom: '1.5rem', 
+          background: '#fee2e2', 
+          borderColor: '#ef4444' 
+        }}>
+          <p style={{ color: '#991b1b', margin: 0 }}>{error}</p>
+          <button
+            onClick={() => setError(null)}
+            className="btn danger"
+            style={{ marginTop: '1rem' }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <div className="grid" style={{ marginBottom: '1.5rem' }}>
         <div className="card" style={{ borderLeft: '4px solid #667eea' }}>
@@ -176,14 +198,13 @@ export default function DoctorAppointmentsPage() {
   );
 }
 
-// medicare-frontend/src/pages/doctor/DoctorPastAppointmentsPage.jsx
-import React from 'react';
-
+// Separate file: medicare-frontend/src/pages/doctor/DoctorPastAppointmentsPage.jsx
 export function DoctorPastAppointmentsPage() {
   const navigate = useNavigate();
   const [appointments, setAppointments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     loadAppointments();
@@ -192,13 +213,17 @@ export function DoctorPastAppointmentsPage() {
   const loadAppointments = async () => {
     try {
       setLoading(true);
+      setError(null);
       const response = await api.getDoctorPastAppointments();
 
       if (response.ok) {
         setAppointments(response.data || []);
+      } else {
+        setError(response.error || 'Failed to load past appointments');
       }
     } catch (err) {
       console.error('Failed to load past appointments:', err);
+      setError('Failed to load past appointments');
     } finally {
       setLoading(false);
     }
@@ -206,8 +231,8 @@ export function DoctorPastAppointmentsPage() {
 
   const filteredAppointments = appointments.filter(appt => {
     return !searchTerm || 
-      appt.patient_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      appt.clinic_name.toLowerCase().includes(searchTerm.toLowerCase());
+      (appt.patient_name && appt.patient_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (appt.clinic_name && appt.clinic_name.toLowerCase().includes(searchTerm.toLowerCase()));
   });
 
   const stats = {
@@ -243,6 +268,23 @@ export function DoctorPastAppointmentsPage() {
           </button>
         </div>
       </div>
+
+      {error && (
+        <div className="card" style={{ 
+          marginBottom: '1.5rem', 
+          background: '#fee2e2', 
+          borderColor: '#ef4444' 
+        }}>
+          <p style={{ color: '#991b1b', margin: 0 }}>{error}</p>
+          <button
+            onClick={() => setError(null)}
+            className="btn danger"
+            style={{ marginTop: '1rem' }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       <div className="grid" style={{ marginBottom: '1.5rem' }}>
         <div className="card" style={{ borderLeft: '4px solid #667eea' }}>
@@ -296,9 +338,11 @@ export function DoctorPastAppointmentsPage() {
                       day: 'numeric'
                     })}
                   </p>
-                  <p className="subtitle">
-                    ✅ Completed: {new Date(appt.completed_at).toLocaleDateString()}
-                  </p>
+                  {appt.completed_at && (
+                    <p className="subtitle">
+                      ✅ Completed: {new Date(appt.completed_at).toLocaleDateString()}
+                    </p>
+                  )}
                   {appt.notes && (
                     <p className="subtitle" style={{ marginTop: '0.5rem' }}>
                       📝 {appt.notes}

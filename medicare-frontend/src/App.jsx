@@ -26,7 +26,7 @@ import DoctorProfilePage from './pages/doctor/DoctorProfilePage';
 import DoctorClinicsPage from './pages/doctor/DoctorClinicsPage';
 import DoctorAvailabilityPage from './pages/doctor/DoctorAvailabilityPage';
 import DoctorAppointmentsPage from './pages/doctor/DoctorAppointmentsPage';
-import { DoctorPastAppointmentsPage } from './pages/doctor/DoctorAppointmentsPage';
+import DoctorPastAppointmentsPage from './pages/doctor/DoctorPastAppointmentsPage';
 
 export default function App() {
   initNotifyGlobal();
@@ -71,11 +71,14 @@ export default function App() {
 }
 
 function Shell({ children }) {
-  const { user, logout } = useAuth();
+  const { user, logout, loading } = useAuth();
   const location = useLocation();
   const isHome = location.pathname === '/';
   
   React.useEffect(() => {
+    // Only show notifications if user is authenticated
+    if (!user || loading) return;
+    
     const p = location.pathname;
     if (p.startsWith('/patient')) {
       try { window.notify({ title: 'Welcome back', message: 'Patient dashboard loaded.', type: 'info' }); } catch {}
@@ -83,7 +86,7 @@ function Shell({ children }) {
     if (p.startsWith('/doctor')) {
       try { window.notify({ title: 'Welcome back', message: 'Doctor dashboard loaded.', type: 'info' }); } catch {}
     }
-  }, [location.pathname]);
+  }, [location.pathname, user, loading]);
   
   return (
     <div>
