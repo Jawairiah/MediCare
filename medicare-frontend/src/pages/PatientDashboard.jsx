@@ -1,7 +1,7 @@
 // medicare-frontend/src/pages/PatientDashboard.jsx
 import { useEffect, useState } from 'react';
 import { useAuth } from '../context/AuthContext';
-import * as api from '../services/api';
+import * as api from '../lib/api';
 
 export default function PatientDashboard() {
   const { user } = useAuth();
