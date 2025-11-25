@@ -2,7 +2,7 @@
 // COMPLETELY RECODED PATIENT DASHBOARD
 
 import React, { useEffect, useState, useContext } from "react";
-import api from "../../services/api";
+import * as api from "../../lib/api";
 import { AuthContext } from "../../context/AuthContext";
 
 export default function PatientDashboard() {

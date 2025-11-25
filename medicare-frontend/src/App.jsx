@@ -13,7 +13,7 @@ import RoleSelect from './pages/RoleSelect';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import PatientDashboard from './pages/PatientDashboard';
-import DoctorDashboard from './pages/DoctorDashboard.jsx';
+import DoctorDashboard from './pages/doctor/DoctorDashboard.jsx';
 import Search from './pages/Search.jsx';
 import DoctorProfile from './pages/DoctorProfile.jsx';
 import Landing from './pages/Landing.jsx';
@@ -108,8 +108,16 @@ function Shell({ children }) {
 }
 
 function RequireRole({ role, children }) {
-  const { user } = useAuth();
-  if (!user) return <Navigate to="/login" replace />;
-  if (user.role !== role) return <Navigate to={role === 'patient' ? '/patient' : '/doctor'} replace />;
+  const { user, loading } = useAuth();
+
+  // Prevent redirect until auth finishes loading
+  if (loading) return <div>Loading...</div>;
+
+  if (!user) return <Navigate to="/auth?tab=login" replace />;
+
+  if (user.role !== role)
+    return <Navigate to={user.role === "patient" ? "/patient" : "/doctor"} replace />;
+
   return children;
 }
+

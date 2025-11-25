@@ -11,16 +11,13 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Check if user is already logged in
-    const persistedRole = localStorage.getItem('medicare_role');
-    const token = localStorage.getItem('medicare_access');
-    
-    if (persistedRole) {
-      setSelectedRole(persistedRole);
-    }
-    
-    if (token) {
-      // Verify token and load user data
+    // Load correct keys
+    const persistedRole = localStorage.getItem("mc_role");
+    const access = localStorage.getItem("mc_access");
+
+    if (persistedRole) setSelectedRole(persistedRole);
+
+    if (access) {
       loadUserProfile(persistedRole);
     } else {
       setLoading(false);
@@ -29,28 +26,21 @@ export function AuthProvider({ children }) {
 
   const loadUserProfile = async (role) => {
     try {
-      let response;
-      if (role === 'doctor') {
-        response = await api.getDoctorProfile();
-      } else {
-        response = await api.getPatientProfile();
-      }
+      let response =
+        role === "doctor"
+          ? await api.getDoctorProfile()
+          : await api.getPatientProfile();
 
       if (response.ok) {
         setUser({ ...response.data, role });
         setIsAuthenticated(true);
         setSelectedRole(role);
       } else {
-        // Token invalid, clear everything
-        api.logout();
-        setIsAuthenticated(false);
-        setUser(null);
+        logout();
       }
-    } catch (error) {
-      console.error('Failed to load user profile:', error);
-      api.logout();
-      setIsAuthenticated(false);
-      setUser(null);
+    } catch (err) {
+      console.error("Failed to load user", err);
+      logout();
     } finally {
       setLoading(false);
     }
@@ -58,135 +48,78 @@ export function AuthProvider({ children }) {
 
   const selectRole = (role) => {
     setSelectedRole(role);
-    localStorage.setItem('medicare_role', role);
+    localStorage.setItem("mc_role", role);
   };
 
   const login = async ({ email, password }) => {
     if (!selectedRole) {
-      return { ok: false, error: 'Please select a role first' };
+      return { ok: false, error: "Please select a role first" };
     }
 
     try {
-      const response = await api.login({ 
-        email, 
-        password, 
-        role: selectedRole 
+      const response = await api.login({
+        email,
+        password,
+        role: selectedRole,
       });
 
-      if (response.ok && response.data?.user) {
+      if (response.ok) {
         const userData = { ...response.data.user, role: selectedRole };
+
         setUser(userData);
         setIsAuthenticated(true);
-        localStorage.setItem('medicare_auth', 'true');
-        localStorage.setItem('medicare_role', selectedRole);
 
-        // Fetch and show notifications
-        try {
-          const notifResponse = await api.getNotifications();
-          if (notifResponse.ok && Array.isArray(notifResponse.data)) {
-            const unread = notifResponse.data.filter(n => !n.read);
-            unread.forEach(n => {
-              const actionType = n.notification_type || 'Notification';
-              const message = n.message || `${actionType} notification`;
-              try { 
-                window.notify({ 
-                  title: n.title || actionType, 
-                  message, 
-                  type: 'info', 
-                  meta: n.meta || {} 
-                }); 
-              } catch {}
-            });
-          }
-        } catch (notifError) {
-          console.error('Failed to load notifications:', notifError);
-        }
+        localStorage.setItem("mc_role", selectedRole);
 
         return { ok: true, user: userData };
       }
 
-      return { 
-        ok: false, 
-        error: response.data?.detail || response.data?.error || 'Invalid credentials' 
+      return {
+        ok: false,
+        error: response.data?.detail || "Invalid credentials",
       };
-    } catch (error) {
-      console.error('Login error:', error);
-      return { 
-        ok: false, 
-        error: 'Login failed. Please check your credentials and try again.' 
-      };
+    } catch (err) {
+      console.error("Login error", err);
+      return { ok: false, error: "Login failed" };
     }
   };
 
   const signup = async (payload) => {
-    if (!selectedRole && !payload.role) {
-      return { ok: false, error: 'Please select a role first' };
-    }
+    const role = payload.role || selectedRole;
+    if (!role) return { ok: false, error: "Please select a role first" };
 
     try {
-      // Prepare signup payload based on role
-      const role = payload.role || selectedRole;
-      const signupData = {
-        role,
-        email: payload.email,
-        password: payload.password,
-        first_name: payload.name?.split(' ')[0] || payload.first_name || '',
-        last_name: payload.name?.split(' ').slice(1).join(' ') || payload.last_name || '',
-      };
-
-      // Add role-specific fields
-      if (role === 'patient') {
-        if (payload.profile) {
-          signupData.date_of_birth = payload.profile.date_of_birth || null;
-          signupData.gender = payload.profile.gender || '';
-          signupData.phone = payload.profile.phone || '';
-          signupData.address = payload.profile.address || '';
-        }
-      } else if (role === 'doctor') {
-        if (payload.profile) {
-          signupData.specialization = payload.profile.specialization || '';
-          signupData.qualification = payload.profile.qualification || '';
-          signupData.experience_years = payload.profile.experience_years || 0;
-          signupData.consultation_fee = payload.profile.consultation_fee || null;
-        }
-      }
-
-      const response = await api.signup(signupData);
-
-      if (response.ok) {
-        return { ok: true };
-      }
-
-      return { 
-        ok: false, 
-        error: response.data?.error || response.data?.detail || 'Signup failed' 
-      };
-    } catch (error) {
-      console.error('Signup error:', error);
-      return { 
-        ok: false, 
-        error: 'Signup failed. Please try again.' 
-      };
+      const response = await api.signup({ ...payload, role });
+      return response.ok
+        ? { ok: true }
+        : { ok: false, error: response.data?.error || "Signup failed" };
+    } catch (err) {
+      console.error("Signup error", err);
+      return { ok: false, error: "Signup failed" };
     }
   };
 
   const logout = () => {
     api.logout();
-    setIsAuthenticated(false);
     setUser(null);
     setSelectedRole(null);
+    setIsAuthenticated(false);
+    localStorage.removeItem("mc_role");
   };
 
-  const value = useMemo(() => ({
-    selectedRole,
-    isAuthenticated,
-    user,
-    loading,
-    selectRole,
-    login,
-    signup,
-    logout,
-  }), [selectedRole, isAuthenticated, user, loading]);
+  const value = useMemo(
+    () => ({
+      selectedRole,
+      user,
+      loading,
+      isAuthenticated,
+      selectRole,
+      login,
+      signup,
+      logout,
+    }),
+    [selectedRole, user, loading, isAuthenticated]
+  );
 
   return (
     <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
@@ -194,9 +127,5 @@ export function AuthProvider({ children }) {
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within AuthProvider');
-  }
-  return context;
+  return useContext(AuthContext);
 }

@@ -1,8 +1,7 @@
 // medicare-frontend/src/pages/doctor/DoctorDashboard.jsx
-// COMPLETE DOCTOR DASHBOARD - Copy this entire file
 
 import React, { useContext, useEffect, useState } from "react";
-import api from "../../services/api";
+import * as api from "../../lib/api";
 import { AuthContext } from "../../context/AuthContext";
 import { Link } from "react-router-dom";
 
