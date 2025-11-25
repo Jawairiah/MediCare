@@ -1,9 +1,6 @@
 import React, { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
-<<<<<<< HEAD
+
 import * as api from '../lib/api';
-=======
-import * as api from "../services/api"
->>>>>>> e1946b183fd988987f63090e94305a8a2ad94b82
 
 const UINotificationsContext = createContext(null);
 
