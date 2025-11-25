@@ -1,7 +1,7 @@
 // medicare-frontend/src/context/AppointmentContext.jsx
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useAuth } from './AuthContext';
-import * as api from "../services/api";
+import * as api from '../lib/api';
 
 
 const AppointmentContext = createContext(null);

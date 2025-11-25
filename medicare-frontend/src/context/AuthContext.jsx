@@ -1,6 +1,6 @@
 // medicare-frontend/src/context/AuthContext.jsx
 import { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import * as api from "../services/api"
+import * as api from '../lib/api';
 
 const AuthContext = createContext(null);
 
